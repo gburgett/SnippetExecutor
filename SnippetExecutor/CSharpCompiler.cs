@@ -11,6 +11,13 @@ namespace SnippetExecutor
     {
         public Writer writer { set; private get; }
 
+        public Options options
+        {
+            get { return _options; }
+            set { _options = value; }
+        }
+        private Options _options = Options.none;
+
         private CompilerResults compiled;
 
         public bool Compile(string text, string options)
@@ -29,18 +36,25 @@ namespace SnippetExecutor
             if (compiled.Errors.HasErrors || compiled.Errors.HasWarnings)
             {
                 writer.writeLine("Errors!");
+                foreach(var error in compiled.Errors)
+                {
+                    writer.writeLine(error.ToString());
+                }
             }
 
-            StringBuilder output = new StringBuilder();
-            output.AppendLine();
-            foreach (string s in compiled.Output)
+            if ((this.options & Options.VerboseCompile) == Options.VerboseCompile)
             {
-                output.AppendLine(s);
+                foreach (string s in compiled.Output)
+                {
+                    String s2 = s.Trim();
+                    if (!String.IsNullOrEmpty(s2))
+                    {
+                        writer.writeLine(s2);
+                    }
+                }
             }
 
-            writer.writeLine(output.ToString());
-
-            return true;
+            return !compiled.Errors.HasErrors;
         }
 
         public bool execute(string args)
@@ -53,6 +67,8 @@ namespace SnippetExecutor
             processObj.StartInfo.Arguments = args;
             processObj.StartInfo.UseShellExecute = false;
             processObj.StartInfo.CreateNoWindow = true;
+            processObj.StartInfo.RedirectStandardOutput = true;
+            processObj.StartInfo.RedirectStandardError = true;
 
             writer.writeLine();
             processObj.Start();
@@ -60,14 +76,16 @@ namespace SnippetExecutor
             while(!processObj.HasExited)
             {
                 System.Threading.Thread.Sleep(50);
+
+                writer.write(processObj.StandardError.ReadToEnd());
                 writer.write(processObj.StandardOutput.ReadToEnd());
             }
 
             processObj.WaitForExit();
             writer.write(processObj.StandardOutput.ReadToEnd());
 
-            writer.writeLine("\r\n\r\nFinished, ");
-
+            writer.writeLine("Finished");
+            
             return true;
         }
 
@@ -85,8 +103,9 @@ namespace SnippetExecutor
 
         private const string postSnippet =
                                                                                       "\r\n" +
-            "           System.Console.WriteLine(\"Finished, hit a key to end\");"  + "\r\n" +
-            "           System.Console.ReadKey(true);"                              + "\r\n" +
+            //"           System.Console.WriteLine(\"Finished, hit a key to end\");"  + "\r\n" +
+            //"           System.Console.ReadKey(true);"                              + "\r\n" +
+            "           System.Environment.Exit(0);"                                + "\r\n" +
             "       }"                                                              + "\r\n" +
             "       private static void WL(object text, params object[] args)"      + "\r\n" +
             "       {"                                                              + "\r\n" +

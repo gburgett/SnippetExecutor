@@ -137,9 +137,10 @@ namespace SnippetExecutor
                 {
                     try
                     {
-                        compiler.Compile(text.ToString(), String.Empty);
+                        bool success = compiler.Compile(text.ToString(), String.Empty);
 
-                        compiler.execute(String.Empty);
+                        if(success)
+                            compiler.execute(String.Empty);
                     }catch(Exception ex)
                     {
                         mAppendWriter.writeLine("Exception! " + ex.Message);

@@ -11,6 +11,8 @@ namespace SnippetExecutor
             set;
         }
 
+        Options options { set; get; }
+
         bool Compile(String text, string options);
 
         bool execute(string args);
@@ -23,6 +25,15 @@ namespace SnippetExecutor
         void writeLine();
 
         void writeLine(String s);
+    }
+
+    [Flags]
+    enum Options
+    {
+        none = 1 << 0,
+        VerboseCompile = 1 << 1,
+        Timings = 1 << 2,
+
     }
 
 }
