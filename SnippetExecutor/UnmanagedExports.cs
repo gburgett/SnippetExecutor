@@ -46,13 +46,16 @@ namespace SnippetExecutor
         static void beNotified(IntPtr notifyCode)
         {
             SCNotification nc = (SCNotification)Marshal.PtrToStructure(notifyCode, typeof(SCNotification));
+
+            NppNotification.Process(nc);
+
             if (nc.nmhdr.code == (uint)NppMsg.NPPN_TBMODIFICATION)
             {
                 PluginBase._funcItems.RefreshItems();
                 Main.SetToolBarIcon();
             }
             else if (nc.nmhdr.code == (uint)NppMsg.NPPN_SHUTDOWN)
-            {
+            {   
                 Main.PluginCleanUp();
                 Marshal.FreeHGlobal(_ptrPluginName);
             }

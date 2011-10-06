@@ -1,17 +1,25 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Collections;
+using System.Diagnostics;
+using NppPluginNET;
 
 namespace SnippetExecutor
 {
-    interface ISnippetCompiler
+    public interface ISnippetCompiler
     {
-        IO writer
+        IO io
         {
             set;
         }
 
-        Options options { set; get; }
+        String[] UnderstoodArguments
+        {
+            get;
+        }
+
+        System.Collections.Hashtable options { get; }
 
         /// <summary>
         /// Processes snippet text and returns a string which should
@@ -42,7 +50,7 @@ namespace SnippetExecutor
         bool cleanup(SnippetInfo info);
     }
 
-    interface IO
+    public interface IO : IDisposable
     {
         void write(String s);
 
@@ -52,16 +60,89 @@ namespace SnippetExecutor
 
         int read();
 
-        int readLine();
+        string readLine();
     }
-
-    [Flags]
-    enum Options
+    
+    public abstract class AbstractSnippetCompiler : ISnippetCompiler
     {
-        none = 1 << 0,
-        VerboseCompile = 1 << 1,
-        Timings = 1 << 2,
+        public IO io { 
+            set;
+            protected get;
+        }
 
+        public abstract String[] UnderstoodArguments
+        {
+            get;
+        }
+
+        protected abstract LangType lang
+        {
+            get;
+        }
+
+        public Hashtable options
+        {
+            get { return _options; }
+        }
+        private Hashtable _options = new Hashtable();
+
+        public virtual string PrepareSnippet(string snippetText)
+        {
+            string toCompile = TemplateLoader.getTemplate(this.lang);
+            if (toCompile == null)
+            {
+                io.writeLine("No template for " + System.IO.Path.GetFullPath("plugins/SnippetExecutor/templates/" + this.lang + ".txt"));
+                return null;
+            }
+
+            toCompile = TemplateLoader.insertSnippet("snippet", snippetText, toCompile);
+            toCompile = TemplateLoader.removeOtherSnippets(toCompile);
+            return toCompile;
+        }
+
+        public abstract object Compile(string text, string options);
+
+        protected abstract string cmdToExecute(object executable, string args);
+
+        protected abstract string getArgs(object executable, string args);
+
+        public virtual bool execute(object executable, string args)
+        {
+            Process processObj = new Process();
+
+            if (executable == null) throw new Exception("compile first");
+
+            processObj.StartInfo.FileName = cmdToExecute(executable, args);
+            processObj.StartInfo.Arguments = getArgs(executable, args);
+            processObj.StartInfo.UseShellExecute = false;
+            processObj.StartInfo.CreateNoWindow = true;
+            processObj.StartInfo.RedirectStandardOutput = true;
+            processObj.StartInfo.RedirectStandardError = true;
+
+            io.writeLine();
+            processObj.Start();
+
+            while (!processObj.HasExited)
+            {
+                System.Threading.Thread.Sleep(50);
+
+                io.write(processObj.StandardError.ReadToEnd());
+                io.write(processObj.StandardOutput.ReadToEnd());
+            }
+
+            processObj.WaitForExit();
+            io.write(processObj.StandardOutput.ReadToEnd());
+
+            io.writeLine("Finished");
+
+            return true;
+        }
+
+        public virtual bool cleanup(SnippetInfo info)
+        {
+            System.IO.File.Delete(cmdToExecute(info.compiled, info.runCmdLine));
+            return true;
+        }
     }
 
 }

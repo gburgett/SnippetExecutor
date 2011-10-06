@@ -12,6 +12,7 @@ using System.Threading;
 using System.Collections.Generic;
 using System.Collections;
 using System.Text.RegularExpressions;
+using SnippetExecutor.Compilers;
 
 namespace SnippetExecutor
 {
@@ -46,6 +47,8 @@ namespace SnippetExecutor
             PluginBase.SetCommand(1, "MyDockableDialog", myDockableDialog);
             idMyDlg = 1;
             PluginBase.SetCommand(2, "CompileSnippet", CompileSnippet, new ShortcutKey(false, true, false, Keys.F5));
+
+
         }
 
         internal static void SetToolBarIcon()
@@ -62,7 +65,12 @@ namespace SnippetExecutor
         internal static void PluginCleanUp()
         {
             Win32.WritePrivateProfileString("SomeSection", "SomeKey", someSetting ? "1" : "0", iniFilePath);
+
         }
+
+        #endregion
+
+        #region " notifications "
 
         #endregion
 
@@ -115,12 +123,13 @@ namespace SnippetExecutor
 
         }
 
+
         internal static void CompileSnippet()
         {
             
             IntPtr currScint = PluginBase.GetCurrentScintilla();
 
-            IO mIO = new IODoc(currScint);
+            IO mIO = new IODoc();
             try
             {
 
@@ -156,7 +165,10 @@ namespace SnippetExecutor
 
                 //create defaults
                 SnippetInfo info = new SnippetInfo();
-                info.language = LangType.L_CS;
+                info.language = LangType.L_TEXT;
+                int langtype = (int)LangType.L_TEXT;
+                Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTLANGTYPE, 0, out langtype);
+                info.language = (LangType) langtype;
                 info.currIO = mIO;
                 info.preprocessed = text.ToString();
                 info.runCmdLine = String.Empty;
@@ -172,7 +184,7 @@ namespace SnippetExecutor
                 mIO.writeLine("lang: " + info.language);
                 mIO.writeLine("postProcessed: " + info.postprocessed);
                 
-                info.compiler.writer = info.currIO;
+                info.compiler.io = info.currIO;
 
                 Thread th = new Thread(
                     delegate()
@@ -228,6 +240,9 @@ namespace SnippetExecutor
             {
                 case LangType.L_CS:
                     return new CSharpCompiler();
+
+                case LangType.L_VB:
+                    return new VBCompiler();
 
                 default:
                     throw new Exception("No compiler for language " + langType.ToString());
@@ -314,7 +329,7 @@ namespace SnippetExecutor
                         // Open a new document
                         Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_MENUCOMMAND, 0, NppMenuCmd.IDM_FILE_NEW);
                         //create an IO to that document
-                        info.currIO = new IODoc(PluginBase.GetCurrentScintilla());
+                        info.currIO = new IODoc();
                     }
                     else
                     {
@@ -342,12 +357,12 @@ namespace SnippetExecutor
         #endregion
     }
 
-    struct SnippetInfo
+    public struct SnippetInfo
     {
         public ISnippetCompiler compiler;
         public IO currIO;
 
-        public Options options;
+        public Hashtable options;
 
         public LangType language;
 
@@ -406,50 +421,144 @@ namespace SnippetExecutor
             throw new NotImplementedException();
         }
 
-        public int readLine()
+        public string readLine()
         {
             throw new NotImplementedException();
+        }
+
+        public void Dispose()
+        {
+            
         }
     }
 
     internal class IODoc : IO
     {
         readonly IntPtr currScint;
+        private int bufferId = 0;
 
-        public IODoc(IntPtr scintilla)
+        private StringBuilder toAppend = new StringBuilder();
+
+        private Boolean isMyBuffer;
+
+        public IODoc()
         {
-            this.currScint = scintilla;
+            this.currScint = PluginBase.GetCurrentScintilla();
+            this.bufferId = (int)Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTBUFFERID, 0, 0);
+            isMyBuffer = true;
+
+            NppNotification.BufferActivated += onBufferActivated;
+            NppNotification.FileBeforeClose -= onBufferActivated;
         }
+
+        public IODoc(int bufferId)
+        {
+            this.currScint = PluginBase.GetCurrentScintilla();
+            this.bufferId = bufferId;
+            if (this.bufferId == (int)Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTBUFFERID, 0, 0))
+                isMyBuffer = true;
+            else
+                isMyBuffer = false;
+
+            NppNotification.BufferActivated += onBufferActivated;
+            NppNotification.FileBeforeClose -= onBufferActivated;
+        }
+
+
+        private void onBufferActivated(SCNotification scn)
+        {
+            if (this.bufferId == (int) Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTBUFFERID, 0, 0))
+                isMyBuffer = true;
+            else
+                isMyBuffer = false;
+
+
+            if (isMyBuffer && toAppend.Length > 0)
+            {
+                lock (toAppend)
+                {
+                    Win32.SendMessage(currScint, SciMsg.SCI_APPENDTEXT, toAppend.Length, toAppend.ToString());
+                    toAppend.Clear();
+                }
+            }
+        }
+
 
         public void write(string s)
         {
-            Win32.SendMessage(currScint, SciMsg.SCI_APPENDTEXT, s.Length, s);
+            if(isMyBuffer)
+                Win32.SendMessage(currScint, SciMsg.SCI_APPENDTEXT, s.Length, s);
+            else
+            {
+                lock(toAppend)
+                {
+                    toAppend.Append(s);
+                }
+            }
         }
 
         public void writeLine()
         {
-            Win32.SendMessage(currScint, SciMsg.SCI_APPENDTEXT, 2, "\r\n");
+            write("\r\n");
         }
 
         public void writeLine(string s)
         {
             String o = String.Concat(s, "\r\n");
-            Win32.SendMessage(currScint, SciMsg.SCI_APPENDTEXT, o.Length, o);
+            write(o);
         }
-
 
         public int read()
         {
             throw new NotImplementedException();
         }
 
-        public int readLine()
+        public string readLine()
         {
             throw new NotImplementedException();
         }
+
+        public void Dispose()
+        {
+            NppNotification.BufferActivated -= onBufferActivated;
+        }
     }
 
-    static class TemplateLoader
+    internal class IONull : IO
+    {
+
+        public void write(string s)
+        {
+            
+        }
+
+        public void writeLine()
+        {
+            
+        }
+
+        public void writeLine(string s)
+        {
+            
+        }
+
+        public int read()
+        {
+            return -1;
+        }
+
+        public string readLine()
+        {
+            return null;
+        }
+
+        public void Dispose()
+        {
+            
+        }
+    }
+
+    public static class TemplateLoader
     {
         private static Hashtable templates = new Hashtable();
 
@@ -503,7 +612,7 @@ namespace SnippetExecutor
             string toReplace = String.Concat(tagStart, tagName, "}");
 
             template = template.Replace(toReplace, snippet);
-
+            
             return template;
         }
 

@@ -1,0 +1,50 @@
+﻿Imports Microsoft.VisualBasic
+Imports System
+Imports System.Collections.Generic
+${SnippetExecutor.imports}
+
+public module MyModule
+
+    Sub Main(args as String())
+        Try
+
+			${SnippetExecutor.snippet}
+			
+			System.Environment.Exit(0)
+        Catch e As Exception
+            Dim err As String = String.Format("---{0}The following error occurred while executing the snippet:{0}{1}{0}---", vbCrLf, e.ToString())
+            Console.WriteLine(err)
+        End Try
+    End Sub
+
+	#Region "methods"
+
+	sub WL(text as object)
+		Console.WriteLine(text)
+	end sub
+
+	sub WL(text as object, paramarray args as object())
+		Console.WriteLine(text.ToString(), args)
+	end sub
+		
+	sub RL()
+		Console.ReadLine()
+	end sub
+	
+	sub Break() 
+		System.Diagnostics.Debugger.Break()
+	end sub
+
+    
+
+	${SnippetExecutor.methods}
+	
+	#End Region
+
+end module
+
+#Region "classes"
+
+${SnippetExecutor.classes}
+
+#End Region
