@@ -1,0 +1,42 @@
+﻿using System;
+using System.Collections.Generic;
+${SnippetExecutor.imports}
+
+public class Program
+{
+	public static void Main(string[] args)
+	{
+		try
+		{
+			${SnippetExecutor.snippet}
+
+			System.Environment.Exit(0);
+		}
+		catch (Exception e)
+		{
+			string error = string.Format("---\nThe following error occurred while executing the snippet:\n{0}\n---", e.ToString());
+			Console.WriteLine(error);
+		}
+	}
+	#region Helper methods
+
+	private static void WL(object text, params object[] args)
+	{
+		Console.WriteLine(text.ToString(), args);	
+	}
+	
+	private static void RL()
+	{
+		Console.ReadLine();	
+	}
+	
+	private static void Break() 
+	{
+		System.Diagnostics.Debugger.Break();
+	}
+
+	${SnippetExecutor.methods}
+
+	#endregion
+
+}

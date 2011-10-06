@@ -38,6 +38,8 @@ namespace SnippetExecutor
         /// <param name="args">command line arguments for the execution</param>
         /// <returns>true if execution finished without error</returns>
         bool execute(Object executable, string args);
+
+        bool cleanup(SnippetInfo info);
     }
 
     interface IO

@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.CSharp;
 using System.CodeDom.Compiler;
 using System.Diagnostics;
+using NppPluginNET;
 
 namespace SnippetExecutor
 {
@@ -22,7 +23,15 @@ namespace SnippetExecutor
 
         public string PrepareSnippet(String snippetText)
         {
-            string toCompile = string.Concat(preSnippet, snippetText, postSnippet);
+            string toCompile = TemplateLoader.getTemplate(LangType.L_CS);
+            if (toCompile == null)
+            {
+                writer.writeLine("No template for " + System.IO.Path.GetFullPath("plugins/SnippetExecutor/templates/" + LangType.L_CS + ".txt"));
+                return null;
+            }
+                
+            toCompile = TemplateLoader.insertSnippet("snippet", snippetText, toCompile);
+            toCompile = TemplateLoader.removeOtherSnippets(toCompile);
             return toCompile;
         }
 
@@ -92,6 +101,24 @@ namespace SnippetExecutor
             writer.writeLine("Finished");
             
             return true;
+        }
+
+        public bool cleanup(SnippetInfo info)
+        {
+            CompilerResults compiled = (info.compiled as CompilerResults);
+            if (compiled == null)
+                return false;
+            try
+            {
+                compiled.TempFiles.Delete();
+
+                System.IO.File.Delete(compiled.PathToAssembly);
+
+                return true;
+            }catch(System.IO.IOException)
+            {
+                return false;
+            }
         }
 
         private const string preSnippet =

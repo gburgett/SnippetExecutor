@@ -9,6 +9,9 @@ using NppPluginNET;
 using Microsoft.CSharp;
 using System.CodeDom.Compiler;
 using System.Threading;
+using System.Collections.Generic;
+using System.Collections;
+using System.Text.RegularExpressions;
 
 namespace SnippetExecutor
 {
@@ -178,6 +181,9 @@ namespace SnippetExecutor
                         {
                             info.postprepared = info.compiler.PrepareSnippet(info.postprocessed);
 
+                            mIO.writeLine("postPrepared:");
+                            mIO.write(info.postprepared);
+
                             if (String.IsNullOrEmpty(info.postprepared)) return;
 
                             info.compiled = info.compiler.Compile(info.postprepared, info.compilerCmdLine);
@@ -190,12 +196,19 @@ namespace SnippetExecutor
                         catch (Exception ex)
                         {
                             mIO.writeLine("Exception! " + ex.Message);
+                            mIO.writeLine(ex.StackTrace);
+                            if (ex.InnerException != null)
+                            {
+                                mIO.writeLine("inner exception: " + ex.InnerException.Message);
+                                mIO.writeLine(ex.InnerException.StackTrace);
+                            }
+
                         }
                         finally
                         {
                             if (info.compiled != null)
                             {
-                                //TODO: cleanup
+                                info.compiler.cleanup(info);
                             }
                         }
                     }
@@ -434,5 +447,72 @@ namespace SnippetExecutor
         {
             throw new NotImplementedException();
         }
+    }
+
+    static class TemplateLoader
+    {
+        private static Hashtable templates = new Hashtable();
+
+        public static string getTemplate(LangType language)
+        {
+            lock (templates.SyncRoot)
+            {
+
+                if (templates[language] == null)
+                {
+                    string ret = loadTemplate(@"plugins/SnippetExecutor/templates/" + language.ToString() + ".txt");
+                    templates[language] = ret;
+                    return ret;
+                }
+                else
+                {
+                    return (string) templates[language];
+                }
+            }
+        }
+
+        private static string loadTemplate(string path)
+        {
+            if (!File.Exists(path)) return null;
+
+            try
+            {
+                using (StreamReader reader = new StreamReader(File.OpenRead(path)))
+                {
+                    return reader.ReadToEnd();
+                }
+            }catch(IOException ex)
+            {
+                return null;
+            }
+        }
+
+        public static void clearTemplates()
+        {
+            lock(templates.SyncRoot)
+            {
+                templates.Clear();
+            }
+        }
+
+        private const string tagStart = "${SnippetExecutor.";
+        private static readonly Regex tagRegex = new Regex(@"\${SnippetExecutor.(?<tagName>[a-zA-Z0-9]+)}");
+
+        public static string insertSnippet(string tagName, string snippet, string template)
+        {
+            string toReplace = String.Concat(tagStart, tagName, "}");
+
+            template = template.Replace(toReplace, snippet);
+
+            return template;
+        }
+
+        public static string removeOtherSnippets(string template)
+        {
+            template = tagRegex.Replace(template, new MatchEvaluator(m => String.Empty));
+
+            return template;
+        }
+
     }
 }
