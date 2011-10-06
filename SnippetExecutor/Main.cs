@@ -19,6 +19,7 @@ namespace SnippetExecutor
         internal const string PluginName = "SnippetExecutor";
         private static string iniFilePath = null;
         private static bool someSetting = false;
+
         private static frmMyDlg frmMyDlg = null;
         private static int idMyDlg = -1;
         private static Bitmap tbBmp = Properties.Resources.star;
@@ -39,10 +40,9 @@ namespace SnippetExecutor
             iniFilePath = Path.Combine(iniFilePath, PluginName + ".ini");
             someSetting = (Win32.GetPrivateProfileInt("SomeSection", "SomeKey", 0, iniFilePath) != 0);
 
-            PluginBase.SetCommand(0, "MyMenuCommand", myMenuFunction, new ShortcutKey(false, false, false, Keys.None));
             PluginBase.SetCommand(1, "MyDockableDialog", myDockableDialog);
             idMyDlg = 1;
-            PluginBase.SetCommand(2, "CompileSnippet", CompileSnippet);
+            PluginBase.SetCommand(2, "CompileSnippet", CompileSnippet, new ShortcutKey(false, true, false, Keys.F5));
         }
 
         internal static void SetToolBarIcon()
@@ -107,56 +107,270 @@ namespace SnippetExecutor
             }
         }
 
-        private static readonly Writer mAppendWriter = new AppendWriter();
+        internal static void RunSnippet()
+        {
+
+        }
 
         internal static void CompileSnippet()
         {
-
+            
             IntPtr currScint = PluginBase.GetCurrentScintilla();
 
-
-            mAppendWriter.writeLine("\r\nStarting");
-
-            int len = (int)Win32.SendMessage(currScint, SciMsg.SCI_GETSELTEXT, 0, 0);
-
-            StringBuilder text = new StringBuilder(len);
-            Win32.SendMessage(currScint, SciMsg.SCI_GETSELTEXT, 0, text);
-
-            if (text.Length == 0)
+            IO mIO = new IODoc(currScint);
+            try
             {
-                mAppendWriter.writeLine("No Text");
-                return;
-            }
 
-            mAppendWriter.writeLine("Compiling");
-            ISnippetCompiler compiler = new CSharpCompiler();
-            compiler.writer = mAppendWriter;
 
-            Thread th = new Thread(
-                delegate()
+                mIO.writeLine("\r\n\r\n--- SnippetExecutor " + DateTime.Now.ToShortTimeString() + " ---");
+
+                int len = (int)Win32.SendMessage(currScint, SciMsg.SCI_GETSELTEXT, 0, 0);
+                StringBuilder text;
+                mIO.writeLine("length: " + len);
+
+                if (len > 1)
                 {
-                    try
-                    {
-                        bool success = compiler.Compile(text.ToString(), String.Empty);
+                    //a selection exists
+                    text = new StringBuilder(len);
+                    Win32.SendMessage(currScint, SciMsg.SCI_GETSELTEXT, 0, text);
+                }
+                else
+                {
+                    //no selection, parse whole file
+                    len = (int)Win32.SendMessage(currScint, SciMsg.SCI_GETTEXT, 0, 0) + 1;
+                    text = new StringBuilder(len);
+                    mIO.writeLine("doclength: " + len);
+                    Win32.SendMessage(currScint, SciMsg.SCI_GETTEXT, len, text);
+                }
 
-                        if(success)
-                            compiler.execute(String.Empty);
-                    }catch(Exception ex)
+                if (text.Length == 0)
+                {
+                    mIO.writeLine("No Text");
+                    return;
+                }
+
+                mIO.writeLine("PreProcessing");
+
+                //create defaults
+                SnippetInfo info = new SnippetInfo();
+                info.language = LangType.L_CS;
+                info.currIO = mIO;
+                info.preprocessed = text.ToString();
+                info.runCmdLine = String.Empty;
+                info.compilerCmdLine = String.Empty;
+                
+                //process overrides
+                PreprocessSnippet(ref info, text.ToString());
+
+                //get correct compiler for language
+                info.compiler = getCompilerForLanguage(info.language);
+
+                mIO.writeLine("Compiling");
+                mIO.writeLine("lang: " + info.language);
+                mIO.writeLine("postProcessed: " + info.postprocessed);
+                
+                info.compiler.writer = info.currIO;
+
+                Thread th = new Thread(
+                    delegate()
                     {
-                        mAppendWriter.writeLine("Exception! " + ex.Message);
+                        try
+                        {
+                            info.postprepared = info.compiler.PrepareSnippet(info.postprocessed);
+
+                            if (String.IsNullOrEmpty(info.postprepared)) return;
+
+                            info.compiled = info.compiler.Compile(info.postprepared, info.compilerCmdLine);
+
+                            if (info.compiled == null) return;
+
+                            info.compiler.execute(info.compiled, info.runCmdLine);
+
+                        }
+                        catch (Exception ex)
+                        {
+                            mIO.writeLine("Exception! " + ex.Message);
+                        }
+                        finally
+                        {
+                            if (info.compiled != null)
+                            {
+                                //TODO: cleanup
+                            }
+                        }
+                    }
+                );
+
+                th.Start();
+            }
+            catch (Exception ex)
+            {
+                mIO.writeLine(ex.Message);
+            }
+        }
+
+        private static ISnippetCompiler getCompilerForLanguage(LangType langType)
+        {
+            switch (langType)
+            {
+                case LangType.L_CS:
+                    return new CSharpCompiler();
+
+                default:
+                    throw new Exception("No compiler for language " + langType.ToString());
+            }
+        }
+
+        static void PreprocessSnippet(ref SnippetInfo info, String snippetText)
+        {
+            string[] lines = snippetText.Split(new String[]{"\r\n"}, StringSplitOptions.RemoveEmptyEntries);
+            int snippetStart = 0;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string l = lines[i].Trim();
+                if (!String.IsNullOrEmpty(l))
+                {
+                    if (l.StartsWith(">>"))
+                    {
+                        l = l.Substring(2);
+                        parseOption(ref info, l);
+                    }
+                    else
+                    {
+                        snippetStart = i;
+                        break;
                     }
                 }
-            );
+            }
 
-            th.Start();
+            int snippetEnd = lines.Length;
+            for (int i = snippetStart; i < lines.Length; i++)
+            {
+                if (lines[i].StartsWith("--- SnippetExecutor"))
+                {
+                    snippetEnd = i;
+                    break;
+                }
+            }
+
+            StringBuilder sb = new StringBuilder();
+            for (int i = snippetStart; i < snippetEnd; i++)
+            {
+                sb.AppendLine(lines[i]);
+            }
+
+            info.postprocessed = sb.ToString();
+
+            return;
+        }
+
+        static void parseOption(ref SnippetInfo info, String option)
+        {
+            option.Trim();
+            string[] cmdOps = option.Split(new String[] { " " }, StringSplitOptions.RemoveEmptyEntries);
+            switch (cmdOps[0].ToLower())
+            {
+                case "lang":
+                    string lang = "L_" + cmdOps[1].Trim().ToUpper();
+                    bool success = Enum.TryParse<LangType>(lang, out info.language);
+                    break;
+
+                case "run":
+                    info.runCmdLine = option.Substring(option.IndexOf(cmdOps[1]));
+                    break;
+
+                case "compile":
+                    info.compilerCmdLine = option.Substring(option.IndexOf(cmdOps[1]));
+                    break;
+
+                case "out":
+                    if ("console".Equals(cmdOps[1], StringComparison.OrdinalIgnoreCase))
+                    {
+                        //TODO: info.currIO = new IOConsole();
+                    }
+                    else if ("insert".Equals(cmdOps[1], StringComparison.OrdinalIgnoreCase))
+                    {
+                        //TODO: info.currIO = new IOInsert();
+                    }
+                    else if ("append".Equals(cmdOps[1], StringComparison.OrdinalIgnoreCase))
+                    {
+                        info.currIO = new IOAppendCurrentDoc();
+                    }
+                    else if ("new".Equals(cmdOps[1], StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Open a new document
+                        Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_MENUCOMMAND, 0, NppMenuCmd.IDM_FILE_NEW);
+                        //create an IO to that document
+                        info.currIO = new IODoc(PluginBase.GetCurrentScintilla());
+                    }
+                    else
+                    {
+                        //TODO: create new file, open it, info.currIO = new IOAppendDoc();
+                        //and mark to save after done
+                    }
+                    break;
+
+
+
+            }
+        }
+
+        static string PrepareSnippet(ISnippetCompiler compiler, String snippetText)
+        {
+            return compiler.PrepareSnippet(snippetText);
+
+        }
+
+        static Object Compile(ISnippetCompiler compiler, String PreparedText, String compilerOptions)
+        {   
+            return compiler.Compile(PreparedText, compilerOptions);
         }
 
         #endregion
     }
 
-    internal class AppendWriter : Writer
+    struct SnippetInfo
     {
-        IntPtr currScint = PluginBase.GetCurrentScintilla();
+        public ISnippetCompiler compiler;
+        public IO currIO;
+
+        public Options options;
+
+        public LangType language;
+
+        /// <summary>
+        /// The compiler command line options
+        /// </summary>
+        public String compilerCmdLine;
+        /// <summary>
+        /// The run-time command line options
+        /// </summary>
+        public String runCmdLine;
+
+        /// <summary>
+        /// The initial input text
+        /// </summary>
+        public String preprocessed;
+        /// <summary>
+        /// The snippet text after parsing the options
+        /// </summary>
+        public String postprocessed;
+        /// <summary>
+        /// The valid source code prepared for the snippet
+        /// </summary>
+        public String postprepared;
+        /// <summary>
+        /// A reference to the compiled, executable source code
+        /// </summary>
+        public Object compiled;
+    }
+
+    internal class IOAppendCurrentDoc : IO
+    {
+        IntPtr currScint
+        {
+            get { return PluginBase.GetCurrentScintilla(); }
+        }
 
         public void write(string s)
         {
@@ -172,6 +386,53 @@ namespace SnippetExecutor
         {
             String o = String.Concat(s, "\r\n");
             Win32.SendMessage(currScint, SciMsg.SCI_APPENDTEXT, o.Length, o);
+        }
+
+        public int read()
+        {
+            throw new NotImplementedException();
+        }
+
+        public int readLine()
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    internal class IODoc : IO
+    {
+        readonly IntPtr currScint;
+
+        public IODoc(IntPtr scintilla)
+        {
+            this.currScint = scintilla;
+        }
+
+        public void write(string s)
+        {
+            Win32.SendMessage(currScint, SciMsg.SCI_APPENDTEXT, s.Length, s);
+        }
+
+        public void writeLine()
+        {
+            Win32.SendMessage(currScint, SciMsg.SCI_APPENDTEXT, 2, "\r\n");
+        }
+
+        public void writeLine(string s)
+        {
+            String o = String.Concat(s, "\r\n");
+            Win32.SendMessage(currScint, SciMsg.SCI_APPENDTEXT, o.Length, o);
+        }
+
+
+        public int read()
+        {
+            throw new NotImplementedException();
+        }
+
+        public int readLine()
+        {
+            throw new NotImplementedException();
         }
     }
 }

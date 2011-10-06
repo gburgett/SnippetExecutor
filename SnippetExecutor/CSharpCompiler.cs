@@ -9,7 +9,7 @@ namespace SnippetExecutor
 {
     class CSharpCompiler : ISnippetCompiler
     {
-        public Writer writer { set; private get; }
+        public IO writer { set; private get; }
 
         public Options options
         {
@@ -20,10 +20,15 @@ namespace SnippetExecutor
 
         private CompilerResults compiled;
 
-        public bool Compile(string text, string options)
+        public string PrepareSnippet(String snippetText)
+        {
+            string toCompile = string.Concat(preSnippet, snippetText, postSnippet);
+            return toCompile;
+        }
+
+        public Object Compile(string toCompile, string options)
         {
             
-            string toCompile = string.Concat(preSnippet, text.ToString(), postSnippet);
             CSharpCodeProvider codeProvider = new CSharpCodeProvider();
             CompilerParameters p = new CompilerParameters();
             p.IncludeDebugInformation = true;
@@ -54,10 +59,10 @@ namespace SnippetExecutor
                 }
             }
 
-            return !compiled.Errors.HasErrors;
+            return compiled;
         }
 
-        public bool execute(string args)
+        public bool execute(Object executable, string args)
         {
             Process processObj = new Process();
 
