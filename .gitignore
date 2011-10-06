@@ -2,3 +2,4 @@
 /SnippetExecutor/bin/*
 /SnippetExecutor/obj/*
 SnippetExecutor.6.0.ReSharper.user
+*.suo
