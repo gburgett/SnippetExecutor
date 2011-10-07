@@ -9,10 +9,15 @@ namespace SnippetExecutor
 {
     public interface ISnippetCompiler
     {
-        IO io
+        IO stdIO
         {
             set;
         }
+		
+		IO console
+		{
+			set;
+		}
 
         String[] UnderstoodArguments
         {
@@ -65,10 +70,15 @@ namespace SnippetExecutor
     
     public abstract class AbstractSnippetCompiler : ISnippetCompiler
     {
-        public IO io { 
+        public IO stdIO { 
             set;
             protected get;
         }
+		
+		public IO console{
+			set;
+			protected get;
+		}
 
         public abstract String[] UnderstoodArguments
         {
@@ -91,7 +101,7 @@ namespace SnippetExecutor
             string toCompile = TemplateLoader.getTemplate(this.lang);
             if (toCompile == null)
             {
-                io.writeLine("No template for " + System.IO.Path.GetFullPath("plugins/SnippetExecutor/templates/" + this.lang + ".txt"));
+                console.writeLine("No template for " + System.IO.Path.GetFullPath("plugins/SnippetExecutor/templates/" + this.lang + ".txt"));
                 return null;
             }
 
@@ -119,21 +129,21 @@ namespace SnippetExecutor
             processObj.StartInfo.RedirectStandardOutput = true;
             processObj.StartInfo.RedirectStandardError = true;
 
-            io.writeLine();
+			console.writeLine("Starting run at " + DateTime.Now.ToString());
             processObj.Start();
 
             while (!processObj.HasExited)
             {
                 System.Threading.Thread.Sleep(50);
 
-                io.write(processObj.StandardError.ReadToEnd());
-                io.write(processObj.StandardOutput.ReadToEnd());
+                stdIO.write(processObj.StandardError.ReadToEnd());
+                stdIO.write(processObj.StandardOutput.ReadToEnd());
             }
 
             processObj.WaitForExit();
-            io.write(processObj.StandardOutput.ReadToEnd());
+            stdIO.write(processObj.StandardOutput.ReadToEnd());
 
-            io.writeLine("Finished");
+            console.writeLine("Finished at " + DateTime.Now.ToString());
 
             return true;
         }

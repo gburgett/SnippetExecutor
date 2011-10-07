@@ -46,6 +46,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Compilers\CSharpCompiler.cs" />
+    <Compile Include="Compilers\MicrosoftCompiler.cs" />
     <Compile Include="Compilers\VBCompiler.cs" />
     <Compile Include="DllExport\DllExportAttribute.cs" />
     <Compile Include="Forms\frmMyDlg.cs">

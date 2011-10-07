@@ -129,16 +129,13 @@ namespace SnippetExecutor
             
             IntPtr currScint = PluginBase.GetCurrentScintilla();
 
-            IO mIO = new IODoc();
+				//initially set console to append this doc
+            IO console = new IODoc();
             try
             {
 
-
-                mIO.writeLine("\r\n\r\n--- SnippetExecutor " + DateTime.Now.ToShortTimeString() + " ---");
-
                 int len = (int)Win32.SendMessage(currScint, SciMsg.SCI_GETSELTEXT, 0, 0);
                 StringBuilder text;
-                mIO.writeLine("length: " + len);
 
                 if (len > 1)
                 {
@@ -149,19 +146,16 @@ namespace SnippetExecutor
                 else
                 {
                     //no selection, parse whole file
-                    len = (int)Win32.SendMessage(currScint, SciMsg.SCI_GETTEXT, 0, 0) + 1;
+                    len = (int)Win32.SendMessage(currScint, SciMsg.SCI_GETTEXT, 0, 0);
                     text = new StringBuilder(len);
-                    mIO.writeLine("doclength: " + len);
                     Win32.SendMessage(currScint, SciMsg.SCI_GETTEXT, len, text);
                 }
 
                 if (text.Length == 0)
                 {
-                    mIO.writeLine("No Text");
+                    console.writeLine("No Text");
                     return;
                 }
-
-                mIO.writeLine("PreProcessing");
 
                 //create defaults
                 SnippetInfo info = new SnippetInfo();
@@ -169,50 +163,98 @@ namespace SnippetExecutor
                 int langtype = (int)LangType.L_TEXT;
                 Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTLANGTYPE, 0, out langtype);
                 info.language = (LangType) langtype;
-                info.currIO = mIO;
+                info.stdIO = console;
+				info.console = console;
                 info.preprocessed = text.ToString();
                 info.runCmdLine = String.Empty;
                 info.compilerCmdLine = String.Empty;
+                info.options = new Hashtable();
                 
                 //process overrides
-                PreprocessSnippet(ref info, text.ToString());
+                try
+                {
+                    PreprocessSnippet(ref info, text.ToString());
+                }
+                catch (Exception ex)
+                {
+                    console.writeLine("\r\n\r\n--- SnippetExecutor " + DateTime.Now.ToShortTimeString() + " ---");
+                    console.writeLine(ex.Message);
+                    console.writeLine(ex.StackTrace);
+                    return;
+                }
+				
+				console = info.console;
+				
+                console.writeLine("\r\n\r\n--- SnippetExecutor " + DateTime.Now.ToShortTimeString() + " ---");
+
+                foreach (DictionaryEntry pair in info.options)
+                {
+                    console.writeLine(pair.Key.ToString() + ":" + pair.Value.ToString());
+                }
 
                 //get correct compiler for language
                 info.compiler = getCompilerForLanguage(info.language);
 
-                mIO.writeLine("Compiling");
-                mIO.writeLine("lang: " + info.language);
-                mIO.writeLine("postProcessed: " + info.postprocessed);
+                console.writeLine("Compiling");
+                console.writeLine("lang: " + info.language);
+                console.writeLine("postProcessed: " + info.postprocessed);
                 
-                info.compiler.io = info.currIO;
+                info.compiler.console = info.console;
+                info.compiler.stdIO = info.stdIO;
 
                 Thread th = new Thread(
                     delegate()
                     {
                         try
                         {
+                            console.writeLine("\r\nGenerating source for snippet...");
                             info.postprepared = info.compiler.PrepareSnippet(info.postprocessed);
 
-                            mIO.writeLine("postPrepared:");
-                            mIO.write(info.postprepared);
+                            if (info.options.ContainsKey("source"))
+                            {
+                                IO writer = console;
+                                writer.writeLine();
+                                if (!String.IsNullOrEmpty((string)info.options["source"]))
+                                {
+                                    string opt = (info.options["source"] as string);
+                                    if (!String.IsNullOrEmpty(opt))
+                                    {
+                                        try
+                                        {
+                                            writer = ioForOption(opt);
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            console.writeLine("Cannot write to " + opt);
+                                            console.writeLine(ex.Message);
+                                            return;
+                                        }
+                                    }
+                                }
+                                writer.write(info.postprepared);
+                            }
 
                             if (String.IsNullOrEmpty(info.postprepared)) return;
 
+                            info.compilerCmdLine = (string)info.options["compile"];
+                            console.writeLine("\r\ncompiling source with options " + info.compilerCmdLine);
                             info.compiled = info.compiler.Compile(info.postprepared, info.compilerCmdLine);
 
                             if (info.compiled == null) return;
 
+                            info.runCmdLine = (string)info.options["run"];
+                            console.writeLine("running with options " + info.runCmdLine);
                             info.compiler.execute(info.compiled, info.runCmdLine);
 
                         }
                         catch (Exception ex)
                         {
-                            mIO.writeLine("Exception! " + ex.Message);
-                            mIO.writeLine(ex.StackTrace);
+                            console.writeLine("Exception! " + ex.Message);
+                            console.writeLine(ex.StackTrace);
                             if (ex.InnerException != null)
                             {
-                                mIO.writeLine("inner exception: " + ex.InnerException.Message);
-                                mIO.writeLine(ex.InnerException.StackTrace);
+                                console.writeLine("inner exception: " + ex.InnerException.Message);
+                                console.writeLine(ex.InnerException.StackTrace);
                             }
 
                         }
@@ -230,7 +272,8 @@ namespace SnippetExecutor
             }
             catch (Exception ex)
             {
-                mIO.writeLine(ex.Message);
+                console.writeLine(ex.Message);
+                console.writeLine(ex.StackTrace);
             }
         }
 
@@ -261,7 +304,14 @@ namespace SnippetExecutor
                     if (l.StartsWith(">>"))
                     {
                         l = l.Substring(2);
-                        parseOption(ref info, l);
+                        try
+                        {
+                            parseOption(ref info, l);
+                        }
+                        catch (Exception ex)
+                        {
+                            throw new Exception("Exception parsing option >>" + l + " : " + ex.Message, ex);
+                        }
                     }
                     else
                     {
@@ -296,71 +346,93 @@ namespace SnippetExecutor
         {
             option.Trim();
             string[] cmdOps = option.Split(new String[] { " " }, StringSplitOptions.RemoveEmptyEntries);
-            switch (cmdOps[0].ToLower())
+            if (cmdOps.Length == 0) return;
+			String cmd = cmdOps[0].ToLower();
+            switch (cmd)
             {
                 case "lang":
+                    if (cmdOps.Length < 2) throw new Exception("no language specified");
                     string lang = "L_" + cmdOps[1].Trim().ToUpper();
                     bool success = Enum.TryParse<LangType>(lang, out info.language);
                     break;
 
-                case "run":
-                    info.runCmdLine = option.Substring(option.IndexOf(cmdOps[1]));
-                    break;
-
-                case "compile":
-                    info.compilerCmdLine = option.Substring(option.IndexOf(cmdOps[1]));
-                    break;
-
                 case "out":
-                    if ("console".Equals(cmdOps[1], StringComparison.OrdinalIgnoreCase))
-                    {
-                        //TODO: info.currIO = new IOConsole();
-                    }
-                    else if ("insert".Equals(cmdOps[1], StringComparison.OrdinalIgnoreCase))
-                    {
-                        //TODO: info.currIO = new IOInsert();
-                    }
-                    else if ("append".Equals(cmdOps[1], StringComparison.OrdinalIgnoreCase))
-                    {
-                        info.currIO = new IOAppendCurrentDoc();
-                    }
-                    else if ("new".Equals(cmdOps[1], StringComparison.OrdinalIgnoreCase))
-                    {
-                        // Open a new document
-                        Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_MENUCOMMAND, 0, NppMenuCmd.IDM_FILE_NEW);
-                        //create an IO to that document
-                        info.currIO = new IODoc();
-                    }
-                    else
-                    {
-                        //TODO: create new file, open it, info.currIO = new IOAppendDoc();
-                        //and mark to save after done
-                    }
+                    if (cmdOps.Length < 2) throw new Exception("no output specified");
+                    info.stdIO = ioForOption(cmdOps[1]);
                     break;
+					
+				case "console":
+                    if (cmdOps.Length < 2) throw new Exception("no output specified");
+                    info.console = ioForOption(cmdOps[1]);
+                    break;
+					
+				default:
+					//shove it in the hashtable
+					string s = (string)info.options[cmd];
+					if (! String.IsNullOrEmpty(s)){
+                        if (option.Length > cmd.Length)
+                        {
+                            //multiple lines with the same option: append them to one line
+                            info.options[cmd] = String.Concat(s, " ", option.Substring(cmd.Length).Trim());
+                        }
+					}
+					else
+					{
+                        if (option.Length > cmd.Length)
+                            info.options[cmd] = option.Substring(cmd.Length).Trim();
+                        else
+                            info.options[cmd] = String.Empty;
+					}
+					break;
 
 
 
             }
         }
 
-        static string PrepareSnippet(ISnippetCompiler compiler, String snippetText)
-        {
-            return compiler.PrepareSnippet(snippetText);
-
-        }
-
-        static Object Compile(ISnippetCompiler compiler, String PreparedText, String compilerOptions)
-        {   
-            return compiler.Compile(PreparedText, compilerOptions);
-        }
-
         #endregion
+
+        private static IO ioForOption(String option)
+        {
+            if (String.IsNullOrEmpty(option))
+            {
+                throw new Exception("No IO destination specified");
+            }
+
+            if ("console".Equals(option, StringComparison.OrdinalIgnoreCase))
+            {
+                //TODO: info.console = new IOConsole();
+                throw new NotImplementedException("console");
+            }
+            else if ("insert".Equals(option, StringComparison.OrdinalIgnoreCase))
+            {
+                //TODO: info.console = new IOInsert();
+                throw new NotImplementedException("insert");
+            }
+            else if ("append".Equals(option, StringComparison.OrdinalIgnoreCase))
+            {
+                return new IOAppendCurrentDoc();
+            }
+            else if ("new".Equals(option, StringComparison.OrdinalIgnoreCase))
+            {
+                // Open a new document
+                Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_MENUCOMMAND, 0, NppMenuCmd.IDM_FILE_NEW);
+                //create an IO to that document
+                return new IODoc();
+            }
+            else
+            {
+                //TODO: new IOWriteDoc();
+                throw new NotImplementedException("silent file");
+            }
+        }
     }
 
     public struct SnippetInfo
     {
         public ISnippetCompiler compiler;
-        public IO currIO;
+        public IO stdIO;
+		public IO console;
 
         public Hashtable options;
 
@@ -590,7 +662,7 @@ namespace SnippetExecutor
                 {
                     return reader.ReadToEnd();
                 }
-            }catch(IOException ex)
+            }catch(IOException)
             {
                 return null;
             }
