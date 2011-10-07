@@ -4,6 +4,8 @@ using System.Text;
 using System.Collections;
 using System.Diagnostics;
 using NppPluginNET;
+using System.Threading;
+using System.IO;
 
 namespace SnippetExecutor
 {
@@ -53,6 +55,8 @@ namespace SnippetExecutor
         bool execute(Object executable, string args);
 
         bool cleanup(SnippetInfo info);
+
+        void Cancel();
     }
 
     public abstract class AbstractSnippetCompiler : ISnippetCompiler
@@ -103,36 +107,75 @@ namespace SnippetExecutor
 
         protected abstract string getArgs(object executable, string args);
 
+        private Process processObj;
+
         public virtual bool execute(object executable, string args)
         {
-            Process processObj = new Process();
-
             if (executable == null) throw new Exception("compile first");
 
+            processObj = new Process();
+            
             processObj.StartInfo.FileName = cmdToExecute(executable, args);
             processObj.StartInfo.Arguments = getArgs(executable, args);
             processObj.StartInfo.UseShellExecute = false;
             processObj.StartInfo.CreateNoWindow = true;
             processObj.StartInfo.RedirectStandardOutput = true;
             processObj.StartInfo.RedirectStandardError = true;
+            processObj.StartInfo.RedirectStandardInput = true;
 
-			console.writeLine("Starting run at " + DateTime.Now.ToString());
-            processObj.Start();
 
-            while (!processObj.HasExited)
+
+            bool started = processObj.Start();
+            if(!started) return false;
+
+            stdIO.stdIn = processObj.StandardInput;
+            new Thread(a =>
             {
-                System.Threading.Thread.Sleep(50);
+                try
+                {
+                    char[] buffer = new char[1];
+                    while (processObj.StandardOutput.Read(buffer, 0, buffer.Length) > 0)
+                    {
+                            
+                            stdIO.write(buffer[0]);
+                    }
+                }catch(Exception ex)
+                {
+                    console.writeLine("Error! " + ex.Message);
+                    console.writeLine(ex.StackTrace);
+                }
+            }).Start();
+            new Thread(a =>
+            {
+                try
+                {
+                    char[] buffer = new char[1];
+                    while (processObj.StandardError.Read(buffer, 0, buffer.Length) > 0)
+                    {
 
-                stdIO.write(processObj.StandardError.ReadToEnd());
-                stdIO.write(processObj.StandardOutput.ReadToEnd());
-            }
+                        stdIO.err(buffer[0]);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    console.writeLine("Error! " + ex.Message);
+                    console.writeLine(ex.StackTrace);
+                }
+            }).Start();
 
             processObj.WaitForExit();
-            stdIO.write(processObj.StandardOutput.ReadToEnd());
 
-            console.writeLine("Finished at " + DateTime.Now.ToString());
+            processObj.Dispose();
 
             return true;
+        }
+
+        public virtual void Cancel()
+        {
+            if(processObj != null)
+            {
+                processObj.Kill();
+            }
         }
 
         public virtual bool cleanup(SnippetInfo info)

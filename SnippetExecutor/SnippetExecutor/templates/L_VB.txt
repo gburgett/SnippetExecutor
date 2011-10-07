@@ -19,16 +19,16 @@ public module MyModule
 
 	#Region "methods"
 
-	sub WL(text as object)
+	sub wl(text as object)
 		Console.WriteLine(text)
 	end sub
 
-	sub WL(text as object, paramarray args as object())
+	sub wl(text as object, paramarray args as object())
 		Console.WriteLine(text.ToString(), args)
 	end sub
 		
-	sub RL()
-		Console.ReadLine()
+	function rl() as string
+		return Console.ReadLine()
 	end sub
 	
 	sub Break() 

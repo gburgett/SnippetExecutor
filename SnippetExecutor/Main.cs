@@ -157,14 +157,14 @@ namespace SnippetExecutor
                 info.language = LangType.L_TEXT;
                 int langtype = (int)LangType.L_TEXT;
                 Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTLANGTYPE, 0, out langtype);
-                info.language = (LangType) langtype;
+                info.language = (LangType)langtype;
                 info.stdIO = console;
-				info.console = console;
+                info.console = console;
                 info.preprocessed = text.ToString();
                 info.runCmdLine = String.Empty;
                 info.compilerCmdLine = String.Empty;
                 info.options = new Hashtable();
-                
+
                 //process overrides
                 try
                 {
@@ -177,9 +177,9 @@ namespace SnippetExecutor
                     console.writeLine(ex.StackTrace);
                     return;
                 }
-				
-				console = info.console;
-				
+
+                console = info.console;
+
                 console.writeLine("\r\n\r\n--- SnippetExecutor " + DateTime.Now.ToShortTimeString() + " ---");
 
                 foreach (DictionaryEntry pair in info.options)
@@ -190,10 +190,6 @@ namespace SnippetExecutor
                 //get correct compiler for language
                 info.compiler = getCompilerForLanguage(info.language);
 
-                console.writeLine("Compiling");
-                console.writeLine("lang: " + info.language);
-                console.writeLine("postProcessed: " + info.postprocessed);
-                
                 info.compiler.console = info.console;
                 info.compiler.stdIO = info.stdIO;
 
@@ -202,7 +198,7 @@ namespace SnippetExecutor
                     {
                         try
                         {
-                            console.writeLine("\r\nGenerating source for snippet...");
+                            console.writeLine("-- Generating source for snippet...");
                             info.postprepared = info.compiler.PrepareSnippet(info.postprocessed);
 
                             if (info.options.ContainsKey("source"))
@@ -232,14 +228,25 @@ namespace SnippetExecutor
                             if (String.IsNullOrEmpty(info.postprepared)) return;
 
                             info.compilerCmdLine = (string)info.options["compile"];
-                            console.writeLine("\r\ncompiling source with options " + info.compilerCmdLine);
+                            console.writeLine("\r\n-- compiling source with options " + info.compilerCmdLine);
                             info.compiled = info.compiler.Compile(info.postprepared, info.compilerCmdLine);
 
                             if (info.compiled == null) return;
 
+                            EventHandler cancelDelegate = delegate(object sender, EventArgs e)
+                                {
+                                    info.compiler.Cancel();
+                                    console.write("-- Cancelling --");
+                                };
+                            frmMyDlg.CancelRunButtonClicked += cancelDelegate;
+
                             info.runCmdLine = (string)info.options["run"];
-                            console.writeLine("running with options " + info.runCmdLine);
+                            console.writeLine("-- running with options " + info.runCmdLine + " --");
                             info.compiler.execute(info.compiled, info.runCmdLine);
+                            console.writeLine("\r\n-- finished run --");
+
+                            frmMyDlg.CancelRunButtonClicked -= cancelDelegate;
+
 
                         }
                         catch (Exception ex)
@@ -259,6 +266,9 @@ namespace SnippetExecutor
                             {
                                 info.compiler.cleanup(info);
                             }
+
+                            console.Dispose();
+                            info.stdIO.Dispose();
                         }
                     }
                 );

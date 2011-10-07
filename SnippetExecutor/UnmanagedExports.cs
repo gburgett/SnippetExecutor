@@ -47,7 +47,8 @@ namespace SnippetExecutor
         {
             SCNotification nc = (SCNotification)Marshal.PtrToStructure(notifyCode, typeof(SCNotification));
 
-            NppNotification.Process(nc);
+            NppNotificationEvents.Process(nc);
+            SciNotificationEvents.Process(nc);
 
             if (nc.nmhdr.code == (uint)NppMsg.NPPN_TBMODIFICATION)
             {

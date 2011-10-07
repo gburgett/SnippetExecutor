@@ -1073,24 +1073,24 @@ namespace NppPluginNET
         public IntPtr hToolbarIcon;
     }
 
-    public static class NppNotification
+    public static class NppNotificationEvents
     {
-        public static event NppNotificationEvent Ready;
-        public static event NppNotificationEvent TBModification;
-        public static event NppNotificationEvent FileBeforeClose;
-        public static event NppNotificationEvent FileClosed;
-        public static event NppNotificationEvent FileBeforeOpen;
-        public static event NppNotificationEvent FileOpened;
-        public static event NppNotificationEvent FileBeforeSave;
-        public static event NppNotificationEvent FileSaved;
-        public static event NppNotificationEvent Shutdown;
-        public static event NppNotificationEvent BufferActivated;
-        public static event NppNotificationEvent LangChanged;
-        public static event NppNotificationEvent WordStylesUpdated;
-        public static event NppNotificationEvent ShortcutRemapped;
-        public static event NppNotificationEvent FileBeforeLoad;
-        public static event NppNotificationEvent FileLoadFailed;
-        public static event NppNotificationEvent DocOrderChanged;
+        public static event NotificationEvent Ready;
+        public static event NotificationEvent TBModification;
+        public static event NotificationEvent FileBeforeClose;
+        public static event NotificationEvent FileClosed;
+        public static event NotificationEvent FileBeforeOpen;
+        public static event NotificationEvent FileOpened;
+        public static event NotificationEvent FileBeforeSave;
+        public static event NotificationEvent FileSaved;
+        public static event NotificationEvent Shutdown;
+        public static event NotificationEvent BufferActivated;
+        public static event NotificationEvent LangChanged;
+        public static event NotificationEvent WordStylesUpdated;
+        public static event NotificationEvent ShortcutRemapped;
+        public static event NotificationEvent FileBeforeLoad;
+        public static event NotificationEvent FileLoadFailed;
+        public static event NotificationEvent DocOrderChanged;
 
         internal static void Process(SCNotification nc)
         {
@@ -1169,7 +1169,23 @@ namespace NppPluginNET
         }
     }
 
-    public delegate void NppNotificationEvent(SCNotification nc);
+    public static class SciNotificationEvents
+    {
+        public static event NotificationEvent CharAdded;
+
+        internal static void Process(SCNotification nc)
+        {
+            switch (nc.nmhdr.code)
+            {
+                case (uint)SciMsg.SCN_CHARADDED:
+                    if (CharAdded != null)
+                        CharAdded(nc);
+                    break;
+            }
+        }
+    }
+
+    public delegate void NotificationEvent(SCNotification nc);
     #endregion
 
     #region " Scintilla "
