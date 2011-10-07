@@ -55,19 +55,6 @@ namespace SnippetExecutor
         bool cleanup(SnippetInfo info);
     }
 
-    public interface IO : IDisposable
-    {
-        void write(String s);
-
-        void writeLine();
-
-        void writeLine(String s);
-
-        int read();
-
-        string readLine();
-    }
-    
     public abstract class AbstractSnippetCompiler : ISnippetCompiler
     {
         public IO stdIO { 
