@@ -192,6 +192,10 @@ namespace SnippetExecutor
 
                 info.compiler.console = info.console;
                 info.compiler.stdIO = info.stdIO;
+                foreach(DictionaryEntry e in info.options)
+                {
+                    info.compiler.options.Add(e.Key, e.Value);
+                }
 
                 Thread th = new Thread(
                     delegate()

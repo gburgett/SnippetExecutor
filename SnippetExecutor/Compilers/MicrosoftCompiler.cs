@@ -30,7 +30,12 @@ namespace SnippetExecutor.Compilers
         {
             
             CodeDomProvider codeProvider = getCompiler();
-            CompilerParameters p = new CompilerParameters();
+            CompilerParameters p;
+            string assemblies = this.options["include"] as string;
+            if(!string.IsNullOrEmpty(assemblies))
+                p = new CompilerParameters(assemblies.Split(new string[]{" "}, StringSplitOptions.RemoveEmptyEntries));
+            else
+                p = new CompilerParameters();
             p.IncludeDebugInformation = true;
             p.GenerateExecutable = true;
             //p.GenerateInMemory = true;

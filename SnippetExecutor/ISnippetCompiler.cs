@@ -27,6 +27,7 @@ namespace SnippetExecutor
         }
 
         System.Collections.Hashtable options { get; }
+        
 
         /// <summary>
         /// Processes snippet text and returns a string which should
