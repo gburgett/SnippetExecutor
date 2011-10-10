@@ -31,7 +31,7 @@ namespace SnippetExecutor
         TextWriter stdIn { get; set; }
     }
 
-    internal abstract class IOTimedCharBuffer : IO
+    internal abstract class IOTimedBuffer : IO
     {
 
         private Timer tWrite;
@@ -56,7 +56,7 @@ namespace SnippetExecutor
                     return;
                 }
             }
-            write(toWrite);
+            writeImpl(toWrite);
         }
 
         private void timeoutErr(object state)
@@ -76,11 +76,12 @@ namespace SnippetExecutor
                     return;
                 }
             }
-            err(toWrite);
+            errImpl(toWrite);
         }
 
+        protected abstract void writeImpl(string s);
 
-        public virtual void write(char c)
+        public void write(char c)
         {
             lock (writeBuffer)
             {
@@ -92,19 +93,29 @@ namespace SnippetExecutor
             }
         }
 
-        public abstract void write(string s);
+        public void write(string s)
+        {
+            lock (writeBuffer)
+            {
+                writeBuffer.Append(s);
+                if (tWrite == null)
+                {
+                    tWrite = new Timer(timeoutWrite, writeBuffer, 50, 50);
+                }
+            }
+        }
 
-        public virtual void writeLine()
+        public void writeLine()
         {
             write(Environment.NewLine);
         }
 
-        public virtual void writeLine(string s)
+        public void writeLine(string s)
         {
             write(String.Concat(s, Environment.NewLine));
         }
 
-        public virtual void err(char c)
+        public void err(char c)
         {
             lock (errBuffer)
             {
@@ -116,14 +127,26 @@ namespace SnippetExecutor
             }
         }
 
-        public abstract void err(string s);
+        protected abstract void errImpl(String s);
 
-        public virtual void errLine()
+        public void err(string s)
+        {
+            lock (errBuffer)
+            {
+                errBuffer.Append(s);
+                if (tErr == null)
+                {
+                    tErr = new Timer(timeoutErr, errBuffer, 50, 50);
+                }
+            }
+        }
+
+        public void errLine()
         {
             err(Environment.NewLine);
         }
 
-        public virtual void errLine(string s)
+        public void errLine(string s)
         {
             err(string.Concat(s, Environment.NewLine));
         }
@@ -139,7 +162,7 @@ namespace SnippetExecutor
     }
 
 
-    internal class IOAppendCurrentDoc : IOTimedCharBuffer
+    internal class IOAppendCurrentDoc : IOTimedBuffer
     {
         private IntPtr currScint;
 
@@ -149,14 +172,14 @@ namespace SnippetExecutor
             SciNotificationEvents.CharAdded += this.onCharAdded;
         }
 
-        public override void write(string s)
+        protected override void writeImpl(string s)
         {
             Win32.SendMessage(currScint, SciMsg.SCI_APPENDTEXT, s.Length, s);
         }
 
-        public override void err(String s)
+        protected override void errImpl(String s)
         {
-            write(s);
+            writeImpl(s);
         }
 
         private void onCharAdded(SCNotification sn)
@@ -176,7 +199,7 @@ namespace SnippetExecutor
         }
     }
 
-    internal class IODoc : IOTimedCharBuffer
+    internal class IODoc : IOTimedBuffer
     {
         readonly IntPtr currScint;
         private int bufferId = 0;
@@ -256,7 +279,7 @@ namespace SnippetExecutor
         }
 
         #region out
-        public override void write(string s)
+        protected override void writeImpl(string s)
         {
             if (isVisible)
                 Win32.SendMessage(currScint, SciMsg.SCI_APPENDTEXT, s.Length, s);
@@ -273,17 +296,20 @@ namespace SnippetExecutor
         #endregion
 
         #region error
-        public override void err(String s)
+        protected override void errImpl(String s)
         {
-            write(s);
+            writeImpl(s);
         }
         #endregion
 
         #region in
         private void onCharAdded(SCNotification sn)
         {
-            if(stdIn != null)
-                stdIn.Write(sn.ch);
+            if (stdIn != null)
+                if (this.bufferId == (int)Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTBUFFERID, 0, 0))
+                {
+                    stdIn.Write(sn.ch);
+                }
         }
         #endregion
 

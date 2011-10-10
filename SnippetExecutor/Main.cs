@@ -99,7 +99,7 @@ namespace SnippetExecutor
                 _nppTbData.hClient = frmMyDlg.Handle;
                 _nppTbData.pszName = "SnippetExecutor Console";
                 _nppTbData.dlgID = idMyDlg;
-                _nppTbData.uMask = NppTbMsg.DWS_DF_CONT_BOTTOM | NppTbMsg.DWS_ICONTAB | NppTbMsg.DWS_ICONBAR;
+                _nppTbData.uMask = NppTbMsg.DWS_DF_CONT_BOTTOM; // | NppTbMsg.DWS_ICONTAB | NppTbMsg.DWS_ICONBAR;
                 _nppTbData.hIconTab = (uint) tbIcon.Handle;
                 _nppTbData.pszModuleName = PluginName;
                 IntPtr _ptrNppTbData = Marshal.AllocHGlobal(Marshal.SizeOf(_nppTbData));
