@@ -236,9 +236,9 @@ namespace SnippetExecutor
 
                             info.compilerCmdLine = (string)info.options["compile"];
                             console.writeLine("\r\n-- compiling source with options " + info.compilerCmdLine);
-                            info.compiled = info.compiler.Compile(info.postprepared, info.compilerCmdLine);
+                            info.executable = info.compiler.Compile(info.postprepared, info.compilerCmdLine);
 
-                            if (info.compiled == null) return;
+                            if (info.executable == null) return;
 
                             EventHandler cancelDelegate = delegate(object sender, EventArgs e)
                                 {
@@ -249,7 +249,7 @@ namespace SnippetExecutor
 
                             info.runCmdLine = (string)info.options["run"];
                             console.writeLine("-- running with options " + info.runCmdLine + " --");
-                            info.compiler.execute(info.compiled, info.runCmdLine);
+                            info.compiler.execute(info.executable, info.runCmdLine);
                             console.writeLine("\r\n-- finished run --");
 
                             frmMyDlg.CancelRunButtonClicked -= cancelDelegate;
@@ -269,7 +269,7 @@ namespace SnippetExecutor
                         }
                         finally
                         {
-                            if (info.compiled != null)
+                            if (info.executable != null)
                             {
                                 info.compiler.cleanup(info);
                             }
@@ -474,9 +474,10 @@ namespace SnippetExecutor
         /// </summary>
         public String postprepared;
         /// <summary>
-        /// A reference to the compiled, executable source code
+        /// The object returned by the compiler's Compile method.  
+        /// Generally a reference to the compiled, executable source code
         /// </summary>
-        public Object compiled;
+        public Object executable;
     }
 
 
@@ -491,7 +492,12 @@ namespace SnippetExecutor
 
                 if (templates[language] == null)
                 {
-                    string ret = loadTemplate(@"plugins/SnippetExecutor/templates/" + language.ToString() + ".txt");
+                    string path = @"plugins/SnippetExecutor/templates/" + language.ToString() + ".txt";
+                    string ret = loadTemplate(path);
+                    if (ret == null)
+                    {
+                        throw new Exception("No template for " + System.IO.Path.GetFullPath(path));
+                    }
                     templates[language] = ret;
                     return ret;
                 }

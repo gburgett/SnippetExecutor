@@ -27,7 +27,11 @@ namespace SnippetExecutor
         }
 
         System.Collections.Hashtable options { get; }
-        
+
+        string workingDirectory
+        {
+            set;
+        }
 
         /// <summary>
         /// Processes snippet text and returns a string which should
@@ -82,6 +86,12 @@ namespace SnippetExecutor
             get;
         }
 
+        public virtual string workingDirectory
+        {
+            get;
+            set;
+        }
+
         public Hashtable options
         {
             get { return _options; }
@@ -91,11 +101,7 @@ namespace SnippetExecutor
         public virtual string PrepareSnippet(string snippetText)
         {
             string toCompile = TemplateLoader.getTemplate(this.lang);
-            if (toCompile == null)
-            {
-                console.writeLine("No template for " + System.IO.Path.GetFullPath("plugins/SnippetExecutor/templates/" + this.lang + ".txt"));
-                return null;
-            }
+            
 
             toCompile = TemplateLoader.insertSnippet("snippet", snippetText, toCompile);
             toCompile = TemplateLoader.removeOtherSnippets(toCompile);
@@ -108,6 +114,8 @@ namespace SnippetExecutor
 
         protected abstract string getArgs(object executable, string args);
 
+        protected abstract void preStart(object executable, string args);
+
         private Process processObj;
 
         public virtual bool execute(object executable, string args)
@@ -116,15 +124,19 @@ namespace SnippetExecutor
 
             processObj = new Process();
             
-            processObj.StartInfo.FileName = cmdToExecute(executable, args);
-            processObj.StartInfo.Arguments = getArgs(executable, args);
+            processObj.StartInfo.FileName = this.cmdToExecute(executable, args);
+            processObj.StartInfo.Arguments = this.getArgs(executable, args);
             processObj.StartInfo.UseShellExecute = false;
             processObj.StartInfo.CreateNoWindow = true;
             processObj.StartInfo.RedirectStandardOutput = true;
             processObj.StartInfo.RedirectStandardError = true;
             processObj.StartInfo.RedirectStandardInput = true;
+            if (!string.IsNullOrEmpty(this.workingDirectory))
+            {
+                processObj.StartInfo.WorkingDirectory = this.workingDirectory;
+            }
 
-
+            this.preStart(executable, args);
 
             bool started = processObj.Start();
             if(!started) return false;
@@ -179,11 +191,8 @@ namespace SnippetExecutor
             }
         }
 
-        public virtual bool cleanup(SnippetInfo info)
-        {
-            System.IO.File.Delete(cmdToExecute(info.compiled, info.runCmdLine));
-            return true;
-        }
+        public abstract bool cleanup(SnippetInfo info);
+
     }
 
 }

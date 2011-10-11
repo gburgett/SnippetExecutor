@@ -7,7 +7,7 @@ using System.Diagnostics;
 using NppPluginNET;
 using System.Xml;
 using System.Collections;
-using System.Data.Linq;
+using System.IO;
 
 namespace SnippetExecutor.Compilers
 {
@@ -46,7 +46,7 @@ namespace SnippetExecutor.Compilers
         {
             if (DllBase == null || KnownDlls.Count == 0)
             {
-                using (System.IO.FileStream fs = System.IO.File.Open("plugins/SnippetExecutor/LibraryReferences.xml", System.IO.FileMode.Open))
+                using (System.IO.FileStream fs = System.IO.File.OpenRead("plugins/SnippetExecutor/LibraryReferences.xml"))
                 {
                     XmlDocument doc = new XmlDocument();
                     doc.Load(fs);
@@ -75,7 +75,7 @@ namespace SnippetExecutor.Compilers
 
 
         private const string quote = "\"";
-        private string[] getAssemblies()
+        protected string[] getAssemblies()
         {
             List<string> ret = new List<string>();
 
@@ -120,36 +120,74 @@ namespace SnippetExecutor.Compilers
 
             for (int i = 0; i < ret.Count; i++)
             {
-                if(KnownDlls.ContainsKey(ret[i]))
+                string s = getDllRef(ret[i]);
+                if (string.IsNullOrEmpty(s))
                 {
-                    //replace with known path
-                    ret[i] = (string)KnownDlls[ret[i]];
+                    console.errLine("cannot find DLL for " + ret[i]);
+                    ret[i] = string.Empty;
                 }
-                else if(!System.IO.File.Exists(ret[i]) 
-                    && DllBase != null)
+                else
                 {
-                    //look in the DllBase path
-                    string path = DllBase + ret[i];
-                    if (!ret[i].EndsWith(".dll"))
-                        path += ".dll";
-
-                    if (System.IO.File.Exists(path))
-                    {
-                        ret[i] = path;
-                    }
+                    ret[i] = s;
                 }
-                //else just got to hope they provided the full path
             }
+
+            ret.RemoveAll(x => string.IsNullOrEmpty(x));
+
+            //get distinct values
+            Dictionary<string, bool> Distinct = new Dictionary<string, bool>();
+            foreach (string value in ret)
+            {
+                Distinct[value] = true;
+            }
+
+            ret.Clear();
+            ret.AddRange(Distinct.Keys);
 
             
             return ret.ToArray();
+        }
+
+        protected string getDllRef(string reference)
+        {
+            if(isDllPath(reference))
+            {
+                return reference;
+            }
+            else if(KnownDlls.ContainsKey(reference))
+            {
+                //replace with known reference
+                return (string)KnownDlls[reference];
+            }
+            else if (DllBase != null)
+            {
+                //look in the DllBase path
+                if (!reference.EndsWith(".dll"))
+                    reference += ".dll";
+
+                string path = DllBase + reference;
+
+                if (System.IO.File.Exists(path))
+                {
+                    //return the dll name
+                    return reference;
+                }
+            }
+
+            //else can't find it, return nothing.
+            return String.Empty;
+        }
+
+        protected bool isDllPath(string reference)
+        {
+            return reference.EndsWith(".dll") && System.IO.File.Exists(reference);
         }
 
         public override Object Compile(string toCompile, string options)
         {
             
             CodeDomProvider codeProvider = getCompiler();
-            CompilerParameters p;
+            CompilerParameters p = new CompilerParameters();
             string[] assemblies = getAssemblies();
             if (assemblies.Length > 0)
             {
@@ -157,13 +195,13 @@ namespace SnippetExecutor.Compilers
                 for (int i = 0; i < assemblies.Length; i++)
                 {
                     console.write(assemblies[i] + " ");
+                    
                 }
                 console.writeLine();
 
-                p = new CompilerParameters(assemblies);
+                p.ReferencedAssemblies.AddRange(assemblies);
             }
-            else
-                p = new CompilerParameters();
+
             p.IncludeDebugInformation = true;
             p.GenerateExecutable = true;
             //p.GenerateInMemory = true;
@@ -195,7 +233,13 @@ namespace SnippetExecutor.Compilers
 
             if (compiled.Errors.HasErrors) return null;
 
-            return compiled;
+            
+
+            return new Dictionary<string, object>()
+                       {
+                           {"parameters", p},
+                           {"results",compiled}
+                       };
         }
 
         protected override string getArgs(object executable, string args)
@@ -205,9 +249,49 @@ namespace SnippetExecutor.Compilers
 
         protected override string cmdToExecute(object executable, string args)
         {
-            return (executable as CompilerResults).PathToAssembly;
+            return ((executable as Dictionary<string, object>)["results"] as CompilerResults).PathToAssembly;
         }
 
+        protected override void preStart(object executable, string args)
+        {
+            //copy dlls to run path
+            Dictionary<string, object> ex = (executable as Dictionary<string, object>);
+            CompilerResults compiled = (ex["results"] as CompilerResults);
+            CompilerParameters parameters =
+                (ex["parameters"] as CompilerParameters);
+
+            DirectoryInfo copyTo = new System.IO.FileInfo(compiled.PathToAssembly).Directory;
+
+            List<string> copiedPaths = new List<String>();
+            foreach(string s in parameters.ReferencedAssemblies)
+            {   
+                if(this.isDllPath(s))
+                {
+                    //copy to compiled dll path
+                    FileInfo fi = new System.IO.FileInfo(s);
+                    File.Copy(s, Path.Combine(copyTo.FullName, fi.Name));
+                    copiedPaths.Add(s);
+                }
+            }
+            ex["copiedPaths"] = copiedPaths;
+
+        }
+
+        public override bool cleanup(SnippetInfo info)
+        {
+            Dictionary<string, object> ex = (info.executable as Dictionary<string, object>);
+            List<string> toDelete = (ex["copiedPaths"] as List<string>);
+            for(int i = 0; i < toDelete.Count; i++)
+            {
+                File.Delete(toDelete[i]);
+            }
+
+            CompilerResults cr = (ex["results"] as CompilerResults);
+            cr.TempFiles.Delete();
+            File.Delete(cr.PathToAssembly);
+
+            return true;
+        }
     }
 
 }

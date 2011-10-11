@@ -4,6 +4,7 @@
   <!-- <DllRef namespace="My.Namespace" >C:\Users\Me\Documents\MyProj\bin\MyNamespace.dll</DllRef>-->
 
   <DefaultDll>System</DefaultDll>
+  <DefaultDll>System.Core</DefaultDll>
   <DefaultDll>System.Xml</DefaultDll>
   
   
