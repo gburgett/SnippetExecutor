@@ -146,6 +146,9 @@ namespace SnippetExecutor
                     Win32.SendMessage(currScint, SciMsg.SCI_GETTEXT, len, text);
                 }
 
+                StringBuilder sb = new StringBuilder(Win32.MAX_PATH);
+                Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTDIRECTORY, Win32.MAX_PATH, sb);
+                
                 if (text.Length == 0)
                 {
                     console.writeLine("No Text");
@@ -283,6 +286,9 @@ namespace SnippetExecutor
             {
                 console.writeLine(ex.Message);
                 console.writeLine(ex.StackTrace);
+                console.write("Caused by: ");
+                console.writeLine(ex.InnerException.Message);
+                console.writeLine(ex.InnerException.StackTrace);
             }
         }
 

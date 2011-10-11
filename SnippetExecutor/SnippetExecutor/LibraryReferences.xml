@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<References>
+  <DllBase>C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.0\</DllBase>
+  <!-- <DllRef namespace="My.Namespace" >C:\Users\Me\Documents\MyProj\bin\MyNamespace.dll</DllRef>-->
+
+  <DefaultDll>System</DefaultDll>
+  <DefaultDll>System.Xml</DefaultDll>
+  
+  
+</References>

@@ -7,6 +7,7 @@ using System.Diagnostics;
 using NppPluginNET;
 using System.Xml;
 using System.Collections;
+using System.Data.Linq;
 
 namespace SnippetExecutor.Compilers
 {
@@ -25,6 +26,13 @@ namespace SnippetExecutor.Compilers
                 return understands;
             }
         }
+
+
+        static MicrosoftCompiler()
+        {
+            MicrosoftCompiler.loadDllConfig();
+        }
+
 		
 		protected abstract CodeDomProvider getCompiler();
 
@@ -32,22 +40,34 @@ namespace SnippetExecutor.Compilers
 
         private static string DllBase = null;
         private static Hashtable KnownDlls = new Hashtable();
+        private static List<String> DefaultDlls = new List<String>();
 
         private static void loadDllConfig()
         {
             if (DllBase == null || KnownDlls.Count == 0)
             {
-                using (System.IO.FileStream fs = System.IO.File.Open("LibraryReferences.xml", System.IO.FileMode.Open))
+                using (System.IO.FileStream fs = System.IO.File.Open("plugins/SnippetExecutor/LibraryReferences.xml", System.IO.FileMode.Open))
                 {
                     XmlDocument doc = new XmlDocument();
                     doc.Load(fs);
 
-                    XmlNode dllBase = doc.SelectSingleNode("DllBase");
+                    XmlNode dllBase = doc.SelectSingleNode("/References/DllBase");
                     if (dllBase != null) MicrosoftCompiler.DllBase = dllBase.InnerText;
 
                     foreach(XmlNode node in doc.SelectNodes("DllRef"))
                     {
-                        KnownDlls[node.Attributes["namespace"].Value] = node.InnerText;
+                        string value = node.Attributes["namespace"].Value;
+                        if(!string.IsNullOrEmpty(value))
+                            KnownDlls[value] = node.InnerText;
+                    }
+
+                    foreach (XmlNode node in doc.SelectNodes("DefaultDll"))
+                    {
+                        string s;
+                        if (!string.IsNullOrEmpty(s = node.InnerText))
+                        {
+                            DefaultDlls.Add(s);
+                        }
                     }
                 }
             }
@@ -57,13 +77,28 @@ namespace SnippetExecutor.Compilers
         private const string quote = "\"";
         private string[] getAssemblies()
         {
-            string assemblies = this.options["include"] as string;
             List<string> ret = new List<string>();
-            
+
+            string assemblies = this.options["include"] as string;
+            if (String.IsNullOrEmpty(assemblies)) return ret.ToArray();
+
+            //add assemblies which are included by default
+            ret.AddRange(DefaultDlls);
+
             int startIndex = assemblies.IndexOf(quote);
             int endIndex;
+            if (startIndex != 0)
+            {
+                //need to split the first bit on whitespace
+                ret.AddRange(
+                    assemblies.Substring(0, (startIndex > -1) ? (startIndex) : assemblies.Length)
+                    .Split(new string[] { " " }, StringSplitOptions.RemoveEmptyEntries));
+            }
+
             while (startIndex > -1)
             {
+                
+
                 endIndex = assemblies.IndexOf(quote, startIndex + 1);
                 if (endIndex <= -1)
                 {
@@ -91,8 +126,7 @@ namespace SnippetExecutor.Compilers
                     ret[i] = (string)KnownDlls[ret[i]];
                 }
                 else if(!System.IO.File.Exists(ret[i]) 
-                    && DllBase != null
-                    && !System.Text.RegularExpressions.Regex.IsMatch(ret[i], @"[a-zA-Z]:[\\/]"))
+                    && DllBase != null)
                 {
                     //look in the DllBase path
                     string path = DllBase + ret[i];
@@ -107,6 +141,7 @@ namespace SnippetExecutor.Compilers
                 //else just got to hope they provided the full path
             }
 
+            
             return ret.ToArray();
         }
 
@@ -116,8 +151,17 @@ namespace SnippetExecutor.Compilers
             CodeDomProvider codeProvider = getCompiler();
             CompilerParameters p;
             string[] assemblies = getAssemblies();
-            if(assemblies.Length > 0)
+            if (assemblies.Length > 0)
+            {
+                console.write("Assemblies: ");
+                for (int i = 0; i < assemblies.Length; i++)
+                {
+                    console.write(assemblies[i] + " ");
+                }
+                console.writeLine();
+
                 p = new CompilerParameters(assemblies);
+            }
             else
                 p = new CompilerParameters();
             p.IncludeDebugInformation = true;
