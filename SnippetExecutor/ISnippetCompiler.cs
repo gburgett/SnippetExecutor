@@ -133,6 +133,7 @@ namespace SnippetExecutor
             processObj.StartInfo.RedirectStandardInput = true;
             if (!string.IsNullOrEmpty(this.workingDirectory))
             {
+                console.writeLine("working dir: " + this.workingDirectory);
                 processObj.StartInfo.WorkingDirectory = this.workingDirectory;
             }
 
@@ -142,41 +143,48 @@ namespace SnippetExecutor
             if(!started) return false;
 
             stdIO.stdIn = processObj.StandardInput;
-            new Thread(a =>
-            {
-                try
+            Thread thOut = new Thread(a =>
                 {
-                    char[] buffer = new char[1];
-                    while (processObj.StandardOutput.Read(buffer, 0, buffer.Length) > 0)
+                    try
                     {
-                            
+                        char[] buffer = new char[1];
+                        while (processObj.StandardOutput.Read(buffer, 0, buffer.Length) > 0)
+                        {
+
                             stdIO.write(buffer[0]);
+                        }
                     }
-                }catch(Exception ex)
-                {
-                    console.writeLine("Error! " + ex.Message);
-                    console.writeLine(ex.StackTrace);
-                }
-            }).Start();
-            new Thread(a =>
-            {
-                try
-                {
-                    char[] buffer = new char[1];
-                    while (processObj.StandardError.Read(buffer, 0, buffer.Length) > 0)
+                    catch (Exception ex)
                     {
-
-                        stdIO.err(buffer[0]);
+                        console.writeLine("Error! " + ex.Message);
+                        console.writeLine(ex.StackTrace);
                     }
-                }
-                catch (Exception ex)
+                });
+            thOut.Start();
+            Thread thIn = new Thread(a =>
                 {
-                    console.writeLine("Error! " + ex.Message);
-                    console.writeLine(ex.StackTrace);
-                }
-            }).Start();
+                    try
+                    {
+                        char[] buffer = new char[1];
+                        while (processObj.StandardError.Read(buffer, 0, buffer.Length) > 0)
+                        {
 
+                            stdIO.err(buffer[0]);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        console.writeLine("Error! " + ex.Message);
+                        console.writeLine(ex.StackTrace);
+                    }
+                });
+            thIn.Start();
+
+            //wait for the process to finish
             processObj.WaitForExit();
+            //wait for the IO redirect threads to finish
+            thOut.Join();
+            thIn.Join();
 
             processObj.Dispose();
 

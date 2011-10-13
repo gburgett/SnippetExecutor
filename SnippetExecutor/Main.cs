@@ -146,8 +146,6 @@ namespace SnippetExecutor
                     Win32.SendMessage(currScint, SciMsg.SCI_GETTEXT, len, text);
                 }
 
-                StringBuilder sb = new StringBuilder(Win32.MAX_PATH);
-                Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTDIRECTORY, Win32.MAX_PATH, sb);
                 
                 if (text.Length == 0)
                 {
@@ -167,6 +165,10 @@ namespace SnippetExecutor
                 info.runCmdLine = String.Empty;
                 info.compilerCmdLine = String.Empty;
                 info.options = new Hashtable();
+
+                StringBuilder sb = new StringBuilder(Win32.MAX_PATH);
+                Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTDIRECTORY, Win32.MAX_PATH, sb);
+                console.writeLine(sb.ToString());
 
                 //process overrides
                 try
@@ -247,6 +249,8 @@ namespace SnippetExecutor
                                 };
                             frmMyDlg.CancelRunButtonClicked += cancelDelegate;
 
+                            info.compiler.workingDirectory = info.workingDirectory;
+
                             info.runCmdLine = (string)info.options["run"];
                             console.writeLine("-- running with options " + info.runCmdLine + " --");
                             info.compiler.execute(info.executable, info.runCmdLine);
@@ -286,9 +290,12 @@ namespace SnippetExecutor
             {
                 console.writeLine(ex.Message);
                 console.writeLine(ex.StackTrace);
-                console.write("Caused by: ");
-                console.writeLine(ex.InnerException.Message);
-                console.writeLine(ex.InnerException.StackTrace);
+                if (ex.InnerException != null)
+                {
+                    console.write("Caused by: ");
+                    console.writeLine(ex.InnerException.Message);
+                    console.writeLine(ex.InnerException.StackTrace);
+                }
             }
         }
 
@@ -380,6 +387,16 @@ namespace SnippetExecutor
                     if (cmdOps.Length < 2) throw new Exception("no output specified");
                     info.console = ioForOption(cmdOps[1]);
                     break;
+
+                case "working":
+                    if (cmdOps.Length < 2) throw new Exception("no directory specified");
+
+                    string dir = cmd.Substring(cmd.Length).Trim();
+                    if(!Directory.Exists(dir)) 
+                        throw new Exception("directory " + Path.GetFullPath(dir) + " doesn't exist");
+                    else
+                        info.workingDirectory = dir;
+                    break;
 					
 				default:
 					//shove it in the hashtable
@@ -451,6 +468,11 @@ namespace SnippetExecutor
         public Hashtable options;
 
         public LangType language;
+
+        /// <summary>
+        /// The working directory of the snippet being run
+        /// </summary>
+        public String workingDirectory;
 
         /// <summary>
         /// The compiler command line options
