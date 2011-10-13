@@ -1,13 +1,89 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
 <References>
+  <!--
+    This is the configuration file for all library references.
+    
+    Each language's compiler loads its library files from here using its own element names and syntax.
+    Generally however, the reference provided by these XML elements should be able to be passed to
+    an >>include command instead of being referenced here if so desired.
+    
+    Example:
+    in the DotNet section, we have "<DefaultDll>System.dll</DefaultDll>".  Instead of specifying that here
+    it could be passed in as ">>include System.dll" which would do the same thing.
+  -->
+  
+  
+  
   <DotNet>
+    <!-- 
+        Assembly references for all .Net languages (C#, VB .Net, etc)
+        
+        The .NET framework knows how to find .NET assemblies using just the assembly name.
+    -->
+    
+    <!-- The base directory where the dotnet compiler will look when an assembly reference is not explicitly defined. -->
     <DllBase>C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.0\</DllBase>
-    <!-- <DllRef namespace="My.Namespace" >C:\Users\Me\Documents\MyProj\bin\MyNamespace.dll</DllRef>-->
-
+    
+    <!-- 
+        The default assemblies that will be included every time.
+    -->
     <DefaultDll>System.dll</DefaultDll>
     <DefaultDll>System.Core.dll</DefaultDll>
-    <DefaultDll>System.Xml.dll</DefaultDll>
+    <!--<DefaultDll>System.Xml.dll</DefaultDll>-->
+
+    <!-- 
+        References for specific namespaces.  The DotNet compilers will scan 'using' and 'import' statements and include
+        the DLL's that are defined here.
+        The namespaces are matched with a "starts with", so if "System.Text" is mapped to "System.dll" then
+        "using System.Text;" and "using System.Text.RegularExpressions;" would both include "System.dll".
+    -->
+    <!-- <DllRef namespace="My.Namespace" >C:\Users\Me\Documents\MyProj\bin\release\MyNamespace.dll</DllRef>-->
+    <!-- <DllRef namespace="System.Text.RegularExpressions">System.dll</DllRef>-->
   </DotNet>
+
+  <Java>
+    <!--
+        JAR references for all Java libraries.
+        
+        JAR references must always have a valid path, the Java runtime doesn't know how to search for
+        JAR's by name.
+    -->
+    
+    <!-- The directories to search for JAR files that are not explicitly mapped.  There can be multiple of these. -->
+    <LibPath>\lib\</LibPath>
+    <!-- <LibPath>C:\Users\Me\Documents\My Projects\Common Libraries</LibPath> -->
+
+    <!-- Default JARs to always include in compilation -->
+    <!-- <DefaultJar>C:\Users\Me\Documents\My Projects\Common Libraries\JodaTime.jar</DefaultJar> -->
+    
+    <!-- 
+        References for specific packages.  The Java compiler will scan import statements and look here if
+        there is a reference to a jar to include for that package.
+        The packages are matched with a "starts with", so if "org.joda.time" is mapped to "JodaTime.jar" then
+        "import org.joda.time.*", "import org.joda.time.DateTime" and "import org.joda.time.base.*" would all include "JodaTime.jar".
+        One import statement can match multiple element declarations here, in which case all associated Jars would be included.
+        
+        The path can be relative to the LibPath.  If the .jar exists in multiple LibPath directories, the
+        first occuring LibPath will be preferred.
+    -->
+    <LibRef namespace="org.joda.time">JodaTime.jar</LibRef>
+
+    <!--
+        Reference to a framework.  If this framework is included (ex >>include Metro") then all the jars specified
+        here will be included.
+    -->
+    <!-- The METRO 2.0 library for JAX-WS, ships with NetBeans.-->
+    <Framework name="METRO">
+      <base>C:\Program Files\NetBeans 7.0.1\ide\modules\ext\metro\</base>
+      <jar>..\jaxb\activation.jar</jar>
+      <jar>webservices-api.jar</jar>
+      <jar>webservices-extra-api.jar</jar>
+      <jar>webservices-extra.jar</jar>
+      <jar>webservices-rt.jar</jar>
+      <jar>webservices-tools.jar</jar>
+    </Framework>
+    
+  </Java>
   
   
 </References>

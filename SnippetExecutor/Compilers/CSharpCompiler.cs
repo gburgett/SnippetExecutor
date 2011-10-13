@@ -47,7 +47,8 @@ namespace SnippetExecutor.Compilers
                             string ns = l.Substring(usingCmd.Length, l.Length - usingCmd.Length - 1).Trim();
                             //append only if we can find it
                             if(!string.IsNullOrEmpty(this.getDllRef(ns)))
-                                sb.Append(ns).Append(" ");
+                                //need to surround with "", in case the ref contains spaces.
+                                sb.Append('"').Append(ns).Append('"').Append(" ");
                         }
                     }
                     else

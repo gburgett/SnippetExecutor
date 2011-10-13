@@ -54,7 +54,7 @@ namespace SnippetExecutor.Compilers
                     XmlNode dllBase = doc.SelectSingleNode("/References/DotNet/DllBase");
                     if (dllBase != null) MicrosoftCompiler.DllBase = dllBase.InnerText;
 
-                    foreach(XmlNode node in doc.SelectNodes("DllRef"))
+                    foreach(XmlNode node in doc.SelectNodes("/References/DotNet/DllRef"))
                     {
                         string value = node.Attributes["namespace"].Value;
                         if(!string.IsNullOrEmpty(value))
@@ -85,7 +85,6 @@ namespace SnippetExecutor.Compilers
 
             string assemblies = this.options["include"] as string;
             if (String.IsNullOrEmpty(assemblies)) return ret.ToArray();
-
             
             int startIndex = assemblies.IndexOf(quote);
             int endIndex;
