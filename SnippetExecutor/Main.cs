@@ -105,6 +105,8 @@ namespace SnippetExecutor
                 IntPtr _ptrNppTbData = Marshal.AllocHGlobal(Marshal.SizeOf(_nppTbData));
                 Marshal.StructureToPtr(_nppTbData, _ptrNppTbData, false);
 
+                debug = frmMyDlg.getIOToConsole();  //update the debug IO
+
                 Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_DMMREGASDCKDLG, 0, _ptrNppTbData);
             }
             else
@@ -118,6 +120,7 @@ namespace SnippetExecutor
 
         }
 
+        internal static IO debug = new IONull();
 
         internal static void CompileSnippet()
         {
@@ -169,7 +172,7 @@ namespace SnippetExecutor
                 StringBuilder sb = new StringBuilder(Win32.MAX_PATH);
                 Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTDIRECTORY, Win32.MAX_PATH, sb);
                 info.workingDirectory = sb.ToString();
-
+                
                 //process overrides
                 try
                 {
@@ -221,7 +224,7 @@ namespace SnippetExecutor
                                     {
                                         try
                                         {
-                                            writer = ioForOption(opt);
+                                            writer = ioForOption(opt, info);
                                         }
                                         catch (Exception ex)
                                         {
@@ -380,12 +383,12 @@ namespace SnippetExecutor
 
                 case "out":
                     if (cmdOps.Length < 2) throw new Exception("no output specified");
-                    info.stdIO = ioForOption(cmdOps[1]);
+                    info.stdIO = ioForOption(option.Substring(cmdOps[0].Length, option.Length - cmdOps[0].Length), info);
                     break;
 					
 				case "console":
                     if (cmdOps.Length < 2) throw new Exception("no output specified");
-                    info.console = ioForOption(cmdOps[1]);
+                    info.console = ioForOption(option.Substring(cmdOps[0].Length, option.Length - cmdOps[0].Length), info);
                     break;
 
                 case "working":
@@ -424,32 +427,64 @@ namespace SnippetExecutor
 
         #endregion
 
-        private static IO ioForOption(String option)
+        private static IO ioForOption(String option, SnippetInfo info)
         {
+            option = option.TrimStart();
+            
             if (String.IsNullOrEmpty(option))
             {
                 throw new Exception("No IO destination specified");
             }
 
-            if ("console".Equals(option, StringComparison.OrdinalIgnoreCase))
+            if (option.StartsWith("console", StringComparison.OrdinalIgnoreCase))
             {
                 return frmMyDlg.getIOToConsole();
             }
-            else if ("insert".Equals(option, StringComparison.OrdinalIgnoreCase))
+            else if (option.StartsWith("insert", StringComparison.OrdinalIgnoreCase))
             {
                 //TODO: info.console = new IOInsert();
                 throw new NotImplementedException("insert");
             }
-            else if ("append".Equals(option, StringComparison.OrdinalIgnoreCase))
+            else if (option.StartsWith("append", StringComparison.OrdinalIgnoreCase))
             {
                 return new IOAppendCurrentDoc();
             }
-            else if ("new".Equals(option, StringComparison.OrdinalIgnoreCase))
+            else if (option.StartsWith("new", StringComparison.OrdinalIgnoreCase))
             {
                 // Open a new document
                 Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_MENUCOMMAND, 0, NppMenuCmd.IDM_FILE_NEW);
                 //create an IO to that document
                 return new IODoc();
+            }
+            else if (option.StartsWith("file", StringComparison.OrdinalIgnoreCase))
+            {
+                string filename = option.Substring(4, option.Length - 4);
+                if(!Path.IsPathRooted(filename))
+                {
+                    filename = Path.Combine(info.workingDirectory, filename);
+                }
+
+                
+
+                bool created = false;
+                if (!File.Exists(filename))
+                {
+                    using(File.Create(filename))
+                    {
+                        created = true;
+                    }
+                }
+
+                //make a new doc and open it
+                bool success = Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_DOOPEN, (int)0, filename).ToInt32() == 1;
+                if (!success)
+                {
+                    if (created) File.Delete(filename);
+                    throw new Exception("could not open file: " + Path.GetFullPath(filename));
+                }
+                //create an IO to that document
+                return new IODoc();
+                
             }
             else
             {
@@ -457,7 +492,11 @@ namespace SnippetExecutor
                 throw new NotImplementedException("silent file");
             }
         }
+
+        
     }
+
+    
 
     public struct SnippetInfo
     {

@@ -210,7 +210,16 @@ namespace SnippetExecutor
 
         protected static event NotificationEvent BufferChanged;
 
-        public IODoc()
+        public readonly string path;
+
+        static IODoc()
+        {
+            NppNotificationEvents.BufferActivated += onBufferActivated;
+            NppNotificationEvents.FileBeforeClose += onBufferActivated;
+
+        }
+
+        public IODoc(string path)
         {
             this.currScint = PluginBase.GetCurrentScintilla();
             this.bufferId = (int)Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTBUFFERID, 0, 0);
@@ -221,19 +230,24 @@ namespace SnippetExecutor
 
             isVisible = true;
 
-            IODoc.BufferChanged += onBufferChanged;
+            this.path = path;
 
+            IODoc.BufferChanged += onBufferChanged;
             SciNotificationEvents.CharAdded += onCharAdded;
         }
 
-        static IODoc()
+        public IODoc() : this(string.Empty)
         {
-            NppNotificationEvents.BufferActivated += onBufferActivated;
-            NppNotificationEvents.FileBeforeClose += onBufferActivated;
-
+            
         }
 
-        public IODoc(int bufferId)
+
+
+        protected IODoc(int bufferId) : this(bufferId, string.Empty)
+        {
+        }
+
+        protected IODoc(int bufferId, string path)
         {
             this.currScint = PluginBase.GetCurrentScintilla();
             this.bufferId = bufferId;
@@ -242,8 +256,33 @@ namespace SnippetExecutor
             else
                 isVisible = false;
 
-            NppNotificationEvents.BufferActivated += onBufferActivated;
-            NppNotificationEvents.FileBeforeClose -= onBufferActivated;
+            this.path = path;
+
+            IODoc.BufferChanged += onBufferChanged;
+            SciNotificationEvents.CharAdded += onCharAdded;
+        }
+
+        private static System.Collections.Hashtable docs = new System.Collections.Hashtable();
+
+        public static IODoc ForBuffer(int bufferId)
+        {
+            return ForBuffer(bufferId, string.Empty);
+        }
+
+        public static IODoc ForBuffer(int bufferId, string path)
+        {
+            IODoc ret = null;
+            if(docs.ContainsKey(bufferId))
+            {
+                ret = (IODoc)docs[bufferId];
+            }
+
+            if (ret == null)
+            {
+                ret = new IODoc(bufferId, path);
+            }
+
+            return ret;
         }
 
         private static int bufferId0 = 0;
@@ -318,6 +357,11 @@ namespace SnippetExecutor
             IODoc.BufferChanged -= onBufferChanged;
             SciNotificationEvents.CharAdded -= onCharAdded;
 
+            if(!string.IsNullOrEmpty(path))
+            {
+                Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_SWITCHTOFILE, 0, path);
+                Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_SAVECURRENTFILE, 0, 0);
+            }
         }
 
         ~IODoc()
