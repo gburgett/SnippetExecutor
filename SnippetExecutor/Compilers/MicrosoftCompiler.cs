@@ -51,7 +51,7 @@ namespace SnippetExecutor.Compilers
                     XmlDocument doc = new XmlDocument();
                     doc.Load(fs);
 
-                    XmlNode dllBase = doc.SelectSingleNode("/References/DllBase");
+                    XmlNode dllBase = doc.SelectSingleNode("/References/DotNet/DllBase");
                     if (dllBase != null) MicrosoftCompiler.DllBase = dllBase.InnerText;
 
                     foreach(XmlNode node in doc.SelectNodes("DllRef"))
@@ -61,7 +61,7 @@ namespace SnippetExecutor.Compilers
                             KnownDlls[value] = node.InnerText;
                     }
 
-                    foreach (XmlNode node in doc.SelectNodes("DefaultDll"))
+                    foreach (XmlNode node in doc.SelectNodes("/References/DotNet/DefaultDll"))
                     {
                         string s;
                         if (!string.IsNullOrEmpty(s = node.InnerText))
@@ -79,12 +79,14 @@ namespace SnippetExecutor.Compilers
         {
             List<string> ret = new List<string>();
 
+            //add assemblies which are included by default
+            ret.AddRange(DefaultDlls);
+            
+
             string assemblies = this.options["include"] as string;
             if (String.IsNullOrEmpty(assemblies)) return ret.ToArray();
 
-            //add assemblies which are included by default
-            ret.AddRange(DefaultDlls);
-
+            
             int startIndex = assemblies.IndexOf(quote);
             int endIndex;
             if (startIndex != 0)
