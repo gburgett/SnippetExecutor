@@ -20,11 +20,24 @@ public class Program
 	}
 	#region Helper methods
 
+	private static void wl(string text)
+	{
+		Console.WriteLine(text);
+	}
+
+	private static void wl(object text)
+	{
+		Console.WriteLine(text.ToString());
+	}
+
 	private static void wl(object text, params object[] args)
 	{
-		Console.WriteLine(text.ToString(), args);	
+		if(args.Length > 0)
+			Console.WriteLine(text.ToString(), args);	
+		else
+			Console.WriteLine(text.ToString());
 	}
-	
+
 	private static string rl()
 	{
 		return Console.ReadLine();	

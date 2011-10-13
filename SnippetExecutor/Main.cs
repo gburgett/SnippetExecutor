@@ -168,7 +168,7 @@ namespace SnippetExecutor
 
                 StringBuilder sb = new StringBuilder(Win32.MAX_PATH);
                 Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTDIRECTORY, Win32.MAX_PATH, sb);
-                console.writeLine(sb.ToString());
+                info.workingDirectory = sb.ToString();
 
                 //process overrides
                 try

@@ -133,7 +133,6 @@ namespace SnippetExecutor
             processObj.StartInfo.RedirectStandardInput = true;
             if (!string.IsNullOrEmpty(this.workingDirectory))
             {
-                console.writeLine("working dir: " + this.workingDirectory);
                 processObj.StartInfo.WorkingDirectory = this.workingDirectory;
             }
 

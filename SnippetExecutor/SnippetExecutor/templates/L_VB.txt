@@ -19,10 +19,14 @@ public module MyModule
 
 	#Region "methods"
 
+	sub wl(text as string)
+		Console.WriteLine(text)
+	end sub
+	
 	sub wl(text as object)
 		Console.WriteLine(text)
 	end sub
-
+	
 	sub wl(text as object, paramarray args as object())
 		Console.WriteLine(text.ToString(), args)
 	end sub
