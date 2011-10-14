@@ -79,6 +79,8 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
+    <None Include="Properties\stop.png" />
+    <None Include="Properties\clear.png" />
     <Content Include="SnippetExecutor\LibraryReferences.xml">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <SubType>Designer</SubType>
