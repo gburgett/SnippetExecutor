@@ -451,10 +451,7 @@ namespace SnippetExecutor
             }
             else if (option.StartsWith("new", StringComparison.OrdinalIgnoreCase))
             {
-                // Open a new document
-                Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_MENUCOMMAND, 0, NppMenuCmd.IDM_FILE_NEW);
-                //create an IO to that document
-                return new IODoc();
+                return IONewDoc.NewDocFactory();
             }
             else if (option.StartsWith("file", StringComparison.OrdinalIgnoreCase))
             {
@@ -464,26 +461,8 @@ namespace SnippetExecutor
                     filename = Path.Combine(info.workingDirectory, filename);
                 }
 
-                
-
-                bool created = false;
-                if (!File.Exists(filename))
-                {
-                    using(File.Create(filename))
-                    {
-                        created = true;
-                    }
-                }
-
-                //make a new doc and open it
-                bool success = Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_DOOPEN, (int)0, filename).ToInt32() == 1;
-                if (!success)
-                {
-                    if (created) File.Delete(filename);
-                    throw new Exception("could not open file: " + Path.GetFullPath(filename));
-                }
                 //create an IO to that document
-                return new IODoc();
+                return IOFileDoc.FileDocFactory(filename);
                 
             }
             else

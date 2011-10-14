@@ -31,8 +31,13 @@ namespace SnippetExecutor
         TextWriter stdIn { get; set; }
     }
 
+    /// <summary>
+    /// This abstract class provides a string buffer to which writes are initially written.  After a short timeout
+    /// the buffer is flushed to writeImpl and errImpl.
+    /// </summary>
     internal abstract class IOTimedBuffer : IO
     {
+        const int flushIntervalMS = 50;
 
         private Timer tWrite;
         private Timer tErr;
@@ -88,7 +93,7 @@ namespace SnippetExecutor
                 writeBuffer.Append(c);
                 if (tWrite == null)
                 {
-                    tWrite = new Timer(timeoutWrite, writeBuffer, 50, 50);
+                    tWrite = new Timer(timeoutWrite, writeBuffer, flushIntervalMS, flushIntervalMS);
                 }
             }
         }
@@ -100,7 +105,7 @@ namespace SnippetExecutor
                 writeBuffer.Append(s);
                 if (tWrite == null)
                 {
-                    tWrite = new Timer(timeoutWrite, writeBuffer, 50, 50);
+                    tWrite = new Timer(timeoutWrite, writeBuffer, flushIntervalMS, flushIntervalMS);
                 }
             }
         }
@@ -122,7 +127,7 @@ namespace SnippetExecutor
                 errBuffer.Append(c);
                 if (tErr == null)
                 {
-                    tErr = new Timer(timeoutErr, errBuffer, 50, 50);
+                    tErr = new Timer(timeoutErr, errBuffer, flushIntervalMS, flushIntervalMS);
                 }
             }
         }
@@ -136,7 +141,7 @@ namespace SnippetExecutor
                 errBuffer.Append(s);
                 if (tErr == null)
                 {
-                    tErr = new Timer(timeoutErr, errBuffer, 50, 50);
+                    tErr = new Timer(timeoutErr, errBuffer, flushIntervalMS, flushIntervalMS);
                 }
             }
         }
@@ -161,7 +166,10 @@ namespace SnippetExecutor
         }
     }
 
-
+    /// <summary>
+    /// This IO is very simple, it always appends the current doc.  If you switch docs this IO will continue
+    /// writing to the new doc.
+    /// </summary>
     internal class IOAppendCurrentDoc : IOTimedBuffer
     {
         private IntPtr currScint;
@@ -199,49 +207,34 @@ namespace SnippetExecutor
         }
     }
 
+    /// <summary>
+    /// This IO writes to a currently open np++ buffer.  It has factory methods for choosing which buffer to write.
+    /// </summary>
     internal class IODoc : IOTimedBuffer
     {
-        readonly IntPtr currScint;
-        private int bufferId = 0;
+        protected IntPtr currScint = PluginBase.GetCurrentScintilla();
+        protected int bufferId;
 
-        private StringBuilder toAppend = new StringBuilder();
+        protected StringBuilder toAppend = new StringBuilder();
 
-        private Boolean isVisible;
-
-        protected static event NotificationEvent BufferChanged;
+        protected bool isVisible { 
+            get 
+            {
+                return this.bufferId == IODoc.currentBuffer;
+            }
+        }
 
         public readonly string path;
 
         static IODoc()
         {
-            NppNotificationEvents.BufferActivated += onBufferActivated;
-            NppNotificationEvents.FileBeforeClose += onBufferActivated;
-
+            currentBuffer = (int)Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTBUFFERID, 0, 0);
         }
 
-        public IODoc(string path)
-        {
-            this.currScint = PluginBase.GetCurrentScintilla();
-            this.bufferId = (int)Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTBUFFERID, 0, 0);
-            if(bufferId0 == 0)
-                bufferId0 = (int)Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETBUFFERIDFROMPOS, 0, 0);
-            if (bufferId1 == 0)
-                bufferId1 = (int)Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETBUFFERIDFROMPOS, 0, 1);
-
-            isVisible = true;
-
-            this.path = path;
-
-            IODoc.BufferChanged += onBufferChanged;
-            SciNotificationEvents.CharAdded += onCharAdded;
-        }
-
-        public IODoc() : this(string.Empty)
+        protected IODoc() : this(0, string.Empty)
         {
             
         }
-
-
 
         protected IODoc(int bufferId) : this(bufferId, string.Empty)
         {
@@ -249,20 +242,30 @@ namespace SnippetExecutor
 
         protected IODoc(int bufferId, string path)
         {
-            this.currScint = PluginBase.GetCurrentScintilla();
             this.bufferId = bufferId;
-            if (this.bufferId == (int)Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTBUFFERID, 0, 0))
-                isVisible = true;
-            else
-                isVisible = false;
 
             this.path = path;
 
-            IODoc.BufferChanged += onBufferChanged;
+            NppNotificationEvents.BufferActivated += onBufferChanged;
             SciNotificationEvents.CharAdded += onCharAdded;
+
         }
 
-        private static System.Collections.Hashtable docs = new System.Collections.Hashtable();
+        protected static System.Collections.Hashtable docs = new System.Collections.Hashtable();
+        protected int refs = 0;
+        
+        #region factories
+        public static IODoc ForCurrentBuffer()
+        {
+            return ForCurrentBuffer(string.Empty);   
+        }
+
+        public static IODoc ForCurrentBuffer(string path)
+        {
+            
+            int bufferId = (int)Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTBUFFERID, 0, 0);
+            return ForBuffer(bufferId, path);
+        }
 
         public static IODoc ForBuffer(int bufferId)
         {
@@ -272,40 +275,34 @@ namespace SnippetExecutor
         public static IODoc ForBuffer(int bufferId, string path)
         {
             IODoc ret = null;
-            if(docs.ContainsKey(bufferId))
+            lock (IODoc.docs)
             {
-                ret = (IODoc)docs[bufferId];
+                if (docs.ContainsKey(bufferId))
+                {
+                    ret = (IODoc)docs[bufferId];
+                }
+
+                if (ret == null)
+                {
+                    ret = new IODoc(bufferId, path);
+                }
+
+                ret.refs++;
+                return ret;
             }
 
-            if (ret == null)
-            {
-                ret = new IODoc(bufferId, path);
-            }
-
-            return ret;
+            
         }
+        #endregion
 
-        private static int bufferId0 = 0;
-        private static int bufferId1;
-
-
-        private static void onBufferActivated(SCNotification scn)
-        {
-            bufferId0 = (int) Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETBUFFERIDFROMPOS, 0, 0);
-            bufferId1 = (int) Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETBUFFERIDFROMPOS, 0, 1);
-
-
-            if(BufferChanged != null)
-                BufferChanged(scn);
-        }
+        private static int currentBuffer = 0;
 
         private void onBufferChanged(SCNotification scn)
         {
-            if (this.bufferId == bufferId0 || this.bufferId == bufferId1)
-                isVisible = true;
-            else
-                isVisible = false;
+            currentBuffer = (int)scn.nmhdr.idFrom;
 
+            Main.debug.write("currB: " + currentBuffer.ToString());
+            Main.debug.writeLine(" buffer: " + bufferId.ToString());
 
             if (isVisible && toAppend.Length > 0)
             {
@@ -354,10 +351,20 @@ namespace SnippetExecutor
 
         public override void Dispose()
         {
-            IODoc.BufferChanged -= onBufferChanged;
+            lock (IODoc.docs)
+            {
+                refs--;
+                if (refs == 0)
+                {
+                    IODoc.docs.Remove(bufferId);
+                }
+            }
+
+            //out of lock, if we've detached all references continue with dispose
+            NppNotificationEvents.BufferActivated -= onBufferChanged;
             SciNotificationEvents.CharAdded -= onCharAdded;
 
-            if(!string.IsNullOrEmpty(path))
+            if (!string.IsNullOrEmpty(path))
             {
                 Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_SWITCHTOFILE, 0, path);
                 Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_SAVECURRENTFILE, 0, 0);
@@ -370,6 +377,194 @@ namespace SnippetExecutor
         }
     }
 
+    /// <summary>
+    /// This IO writes to a new file, lazily opening it in a np++ window as though the user selected
+    /// file -> new.
+    /// </summary>
+    internal class IONewDoc : IODoc
+    {
+        private bool isOpen = false;
+        protected IONewDoc(int bufferId, string path) : base(bufferId, path) { }
+
+
+        public static IONewDoc NewDocFactory()
+        {
+            return IONewDoc.NewDocFactory(string.Empty);
+        }
+
+        public static IONewDoc NewDocFactory(string path)
+        {
+            IONewDoc ret = null;
+            lock (IODoc.docs)
+            {
+                if (docs.ContainsKey("new"))
+                {
+                    ret = (IONewDoc)docs["new"];
+                }
+
+                if (ret == null || !ret.isOpen)
+                {
+                    ret = new IONewDoc(-1, path);
+                    ret.isOpen = false;
+                    docs["new"] = ret;
+                }
+
+                ret.refs++;
+                return ret;
+            }
+        }
+
+        private void lazyOpen()
+        {
+            if (!isOpen)
+            {
+                lock (IODoc.docs)
+                {
+                    if (!isOpen)
+                    {   
+                        // Open a new document
+                        Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_MENUCOMMAND, 0, NppMenuCmd.IDM_FILE_NEW);
+                        //get the buffer ID
+                        int bufferId = (int)Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTBUFFERID, 0, 0);
+                        
+                        //set this object's bufferId
+                        this.bufferId = bufferId;
+                        //put this object in the new spot, so it's both here and in "new".  That way IODoc factories
+                        //will also get this.
+                        IODoc.docs[bufferId] = this;
+
+                        isOpen = true;
+                    }
+                }
+            }
+        }
+
+        protected override void writeImpl(string s)
+        {
+            lazyOpen();  
+            
+            base.writeImpl(s);
+        }
+
+        protected override void errImpl(string s)
+        {
+            lazyOpen();
+
+            base.errImpl(s);
+        }
+
+
+        public override void Dispose()
+        {
+            base.Dispose();
+            isOpen = false;
+        }
+    }
+
+    /// <summary>
+    /// This IO writes to a named file, lazily creating it and opening it in a np++ window.
+    /// </summary>
+    internal class IOFileDoc : IODoc
+    {
+        private bool isOpen = false;
+        protected IOFileDoc(int bufferId, string path) : base(bufferId, path) { }
+
+        /// <summary>
+        /// Returns an IO to the file specified in path.
+        /// The file will be opened in the view when it is first written to.  If the file doesnt exist it will be created.
+        /// The file will be saved when all references to this IO have been disposed.
+        /// </summary>
+        /// <param name="path"></param>
+        /// <returns></returns>
+        public static IOFileDoc FileDocFactory(string path)
+        {
+            IOFileDoc ret = null;
+            string key = string.Concat("File:", path);
+            lock (IODoc.docs)
+            {
+                if (docs.ContainsKey(key))
+                {
+                    ret = (IOFileDoc)docs[key];
+                }
+
+                if (ret == null || !ret.isOpen)
+                {
+                    ret = new IOFileDoc(-1, path);
+                    ret.isOpen = false;
+                    docs[key] = ret;
+                }
+
+                ret.refs++;
+                return ret;
+            }
+        }
+
+        private void lazyOpen()
+        {
+            if (!isOpen)
+            {
+                lock (IODoc.docs)
+                {
+                    if (!isOpen)
+                    {
+                        string filename = this.path;
+                        bool created = false;
+                        if (!File.Exists(filename))
+                        {
+                            using (File.Create(filename))
+                            {
+                                created = true;
+                            }
+                        }
+                        //make a new doc and open it
+                        bool success = Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_DOOPEN, (int)0, filename).ToInt32() == 1;
+                        if (!success)
+                        {
+                            if (created) File.Delete(filename);
+                            throw new Exception("could not open file: " + Path.GetFullPath(filename));
+                        }
+                        //get the buffer ID
+                        int bufferId = (int)Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTBUFFERID, 0, 0);
+                        Main.debug.writeLine("new file buffer: " + bufferId);
+                        //set this object's bufferId
+                        this.bufferId = bufferId;
+                        //put this object in the new spot, so it's both here and in "new".  That way IODoc factories
+                        //will also get this.
+                        IODoc.docs[bufferId] = this;
+
+                        isOpen = true;
+                        
+                    }
+                }
+            }
+        }
+
+        protected override void writeImpl(string s)
+        {
+            lazyOpen();
+
+            base.writeImpl(s);
+        }
+
+        protected override void errImpl(string s)
+        {
+            lazyOpen();
+
+            base.errImpl(s);
+        }
+
+
+        public override void Dispose()
+        {
+            base.Dispose();
+            isOpen = false;
+        }
+
+    }
+
+    /// <summary>
+    /// This IO doesn't print anything anywhere. It ignores all writes and has no stdIn.
+    /// </summary>
     internal class IONull : IO
     {
 
@@ -413,7 +608,11 @@ namespace SnippetExecutor
             
         }
 
-        public TextWriter stdIn { get; set; }
+        public TextWriter stdIn 
+        { 
+            get { return TextWriter.Null; }  
+            set {} 
+        }
 
         public void Dispose()
         {
