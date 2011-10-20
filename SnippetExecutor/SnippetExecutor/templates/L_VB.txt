@@ -5,10 +5,20 @@ ${SnippetExecutor.imports}
 
 public module MyModule
 
+	#Region "fields"
+	${SnippetExecutor.fields}
+	End Region
+
+	#Region "snippet"
+	Sub SnippetExecutor_doSnippet(args as String())
+		${SnippetExecutor.snippet}
+	End Sub
+	#End Region
+
+
     Sub Main(args as String())
         Try
-
-			${SnippetExecutor.snippet}
+			SnippetExecutor_doSnippet(args)
 			
 			System.Environment.Exit(0)
         Catch e As Exception
@@ -18,6 +28,10 @@ public module MyModule
     End Sub
 
 	#Region "methods"
+
+	sub wl()
+		Console.WriteLine()
+	end sub
 
 	sub wl(text as string)
 		Console.WriteLine(text)
@@ -33,7 +47,7 @@ public module MyModule
 		
 	function rl() as string
 		return Console.ReadLine()
-	end sub
+	end function
 	
 	sub Break() 
 		System.Diagnostics.Debugger.Break()

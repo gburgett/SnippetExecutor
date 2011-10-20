@@ -4,11 +4,24 @@ ${SnippetExecutor.imports}
 
 public class Program
 {
+	#region fields
+	${SnippetExecutor.fields}
+	#endregion
+
+	#region snippet
+	private void SnippetExecutor_doSnippet(string[] args)
+	{
+		${SnippetExecutor.snippet}
+	}
+
+	#endregion
+
 	public static void Main(string[] args)
 	{
 		try
 		{
-			${SnippetExecutor.snippet}
+			Program p = new Program();
+			p.SnippetExecutor_doSnippet(args);
 
 			System.Environment.Exit(0);
 		}
@@ -18,7 +31,13 @@ public class Program
 			Console.WriteLine(error);
 		}
 	}
+
 	#region Helper methods
+
+	private static void wl()
+	{
+		Console.WriteLine();
+	}
 
 	private static void wl(string text)
 	{

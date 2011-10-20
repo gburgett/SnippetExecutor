@@ -229,6 +229,7 @@ namespace SnippetExecutor
         static IODoc()
         {
             currentBuffer = (int)Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTBUFFERID, 0, 0);
+            NppNotificationEvents.BufferActivated += updateCurrentBuffer;
         }
 
         protected IODoc() : this(0, string.Empty)
@@ -246,8 +247,8 @@ namespace SnippetExecutor
 
             this.path = path;
 
-            NppNotificationEvents.BufferActivated += onBufferChanged;
             SciNotificationEvents.CharAdded += onCharAdded;
+            IODoc.bufferChanged += onBufferChanged;
 
         }
 
@@ -296,13 +297,23 @@ namespace SnippetExecutor
         #endregion
 
         private static int currentBuffer = 0;
+        private static event NotificationEvent bufferChanged;
+        //sends a message to get the current buffer, since we only need to do this once it's a static handler
+        private static void updateCurrentBuffer(SCNotification scn)
+        {
+            currentBuffer = (int)Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTBUFFERID, 0, 0);
 
+            if (IODoc.bufferChanged != null)
+                bufferChanged(scn);
+        }
+
+        //individual instance handler fired whenever the current buffer changes, to see if we need to spit out saved text.
         private void onBufferChanged(SCNotification scn)
         {
-            currentBuffer = (int)scn.nmhdr.idFrom;
 
-            Main.debug.write("currB: " + currentBuffer.ToString());
-            Main.debug.writeLine(" buffer: " + bufferId.ToString());
+            //Main.debug.write("currB: " + currentBuffer.ToString());
+            //Main.debug.writeLine(" buffer: " + bufferId.ToString());
+            
 
             if (isVisible && toAppend.Length > 0)
             {
@@ -354,14 +365,16 @@ namespace SnippetExecutor
             lock (IODoc.docs)
             {
                 refs--;
-                if (refs == 0)
+                if (refs <= 0)
                 {
                     IODoc.docs.Remove(bufferId);
                 }
+                else
+                    return;
             }
 
             //out of lock, if we've detached all references continue with dispose
-            NppNotificationEvents.BufferActivated -= onBufferChanged;
+            IODoc.bufferChanged -= onBufferChanged;
             SciNotificationEvents.CharAdded -= onCharAdded;
 
             if (!string.IsNullOrEmpty(path))
@@ -374,6 +387,9 @@ namespace SnippetExecutor
         ~IODoc()
         {
             Dispose();
+            //make sure these actually get removed
+            NppNotificationEvents.BufferActivated -= onBufferChanged;
+            SciNotificationEvents.CharAdded -= onCharAdded;
         }
     }
 
@@ -457,7 +473,8 @@ namespace SnippetExecutor
         public override void Dispose()
         {
             base.Dispose();
-            isOpen = false;
+            if(refs <= 0)
+                isOpen = false;
         }
     }
 
@@ -557,7 +574,8 @@ namespace SnippetExecutor
         public override void Dispose()
         {
             base.Dispose();
-            isOpen = false;
+            if(refs <= 0)
+                isOpen = false;
         }
 
     }
