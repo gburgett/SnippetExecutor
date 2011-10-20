@@ -40,13 +40,13 @@ namespace SnippetExecutor.Compilers
 
             StringBuilder sb = new StringBuilder();
             string[] lines = snippetText.Split(new String[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
-            int start = 0;
-            int end = lines.Length;
+            int snippetStart = 0;
+            int snippetEnd = lines.Length;
 
             #region using statements
             string usingCmd = "using";
             int usingEnd = 0;
-            for (int i = start; i < lines.Length; i++)
+            for (int i = snippetStart; i < lines.Length; i++)
             {
                 string l = lines[i].Trim();
                 if (!String.IsNullOrEmpty(l))   //ignore whitespace lines
@@ -88,12 +88,12 @@ namespace SnippetExecutor.Compilers
                 sb.AppendLine(lines[i]);
             }
             toCompile = TemplateLoader.insertSnippet("imports", sb.ToString(), toCompile);
-            start = usingEnd;
+            snippetStart = usingEnd;
             #endregion
 
             #region fields
-            int fieldsEnd = start;
-            for (int i = start; i < lines.Length; i++ )
+            int fieldsEnd = snippetStart;
+            for (int i = snippetStart; i < lines.Length; i++ )
             {
                 string l = lines[i].Trim().ToLower();
                 if (!String.IsNullOrEmpty(l))   //ignore whitespace lines
@@ -108,27 +108,28 @@ namespace SnippetExecutor.Compilers
             }
 
             sb.Clear();
-            for(int i = start; i < fieldsEnd; i++)
+            for(int i = snippetStart; i < fieldsEnd; i++)
             {
                 sb.AppendLine(lines[i]);
             }
             toCompile = TemplateLoader.insertSnippet("fields", sb.ToString(), toCompile);
-            start = fieldsEnd;
+            snippetStart = fieldsEnd;
             #endregion
 
             #region methods & classes
             //go find the first method, then read until end or found first class
-            int methodsStart = start;
-            int methodsEnd = start;
+            int methodsStart = snippetStart;
+            int methodsEnd = snippetStart;
             bool foundFirstMethod = false;
-            for (int i = start; i < lines.Length; i++)
+            for (int i = snippetStart; i < lines.Length; i++)
             {
                 string l = lines[i].Trim().ToLower();
                 if (!String.IsNullOrEmpty(l))   //ignore whitespace lines
                 {
                     Match m = methodsRegex.Match(l);
-                    if (m.Success) 
+                    if (m.Success)
                     {
+                        Main.debug.writeLine("method: " + m.Value);
                         foundFirstMethod = true;
                         methodsStart = i;
                     }
@@ -143,11 +144,21 @@ namespace SnippetExecutor.Compilers
                     }
                 }
             }
-            //did we get to the end of the file without finding the method end
-            if(methodsEnd == start)
+            //if we found a method
+            if (foundFirstMethod)
             {
-                methodsEnd = lines.Length;
+                snippetEnd = methodsStart;
+            
+                //did we get to the end of the file without finding the method end
+                if (methodsEnd == snippetStart)
+                {
+                    methodsEnd = lines.Length;
+
+                }
             }
+
+            Main.debug.writeLine(String.Format("start: {0}, methodsStart {1}, methodsEnd {2}, end {3}", snippetStart,
+                                               methodsStart, methodsEnd, snippetEnd));
 
             sb.Clear();
             for (int i = methodsStart; i < methodsEnd; i++)
@@ -155,11 +166,15 @@ namespace SnippetExecutor.Compilers
                 sb.AppendLine(lines[i]);
             }
             toCompile = TemplateLoader.insertSnippet("methods", sb.ToString(), toCompile);
-            end = methodsStart;
+            
+            
+
             #endregion
 
+            
+
             sb.Clear();
-            for(int i = start; i < end; i++)
+            for(int i = snippetStart; i < snippetEnd; i++)
             {
                 sb.AppendLine(lines[i]);
             }
