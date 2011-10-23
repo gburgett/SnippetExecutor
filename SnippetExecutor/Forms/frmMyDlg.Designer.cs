@@ -45,7 +45,7 @@ namespace SnippetExecutor
             this.toolStripFilenameLabel = new System.Windows.Forms.ToolStripLabel();
             this.toolStripCancelButton = new System.Windows.Forms.ToolStripButton();
             this.toolStripClearButton = new System.Windows.Forms.ToolStripButton();
-            this.textBox1 = new System.Windows.Forms.TextBox();
+            this.textBox1 = new System.Windows.Forms.RichTextBox();
             this.toolStripDropDownButton1 = new System.Windows.Forms.ToolStripDropDownButton();
             this.saveToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.loadToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -99,7 +99,7 @@ namespace SnippetExecutor
             this.textBox1.Location = new System.Drawing.Point(0, 25);
             this.textBox1.Multiline = true;
             this.textBox1.Name = "textBox1";
-            this.textBox1.ScrollBars = System.Windows.Forms.ScrollBars.Both;
+            this.textBox1.ScrollBars = System.Windows.Forms.RichTextBoxScrollBars.Both;
             this.textBox1.Size = new System.Drawing.Size(632, 243);
             this.textBox1.TabIndex = 1;
             this.textBox1.PreviewKeyDown += new System.Windows.Forms.PreviewKeyDownEventHandler(this.textBox1_PreviewKeyDown);
@@ -330,7 +330,7 @@ namespace SnippetExecutor
 
         private ToolStrip toolStrip1;
         private ToolStripButton toolStripCancelButton;
-        private TextBox textBox1;
+        private RichTextBox textBox1;
         private ToolStripButton toolStripClearButton;
         private ToolStripLabel toolStripFilenameLabel;
         private ToolStripDropDownButton toolStripDropDownButton1;
@@ -345,12 +345,23 @@ namespace SnippetExecutor
         /// </summary>
         private class IOConsole : IOTimedBuffer
         {
-            private TextBox console;
+            private RichTextBox console;
             
-            public IOConsole(TextBox console)
+            public IOConsole(RichTextBox console)
             {
                 this.console = console;
                 this.console.KeyPress += onKeyPress;
+            }
+
+            public override void write(string s)
+            {
+                //System.Windows.Forms.MessageBox.Show("write: " + s);
+                base.write(s);
+            }
+            public override void err(string s)
+            {
+                //System.Windows.Forms.MessageBox.Show("err: " + s);
+                base.err(s);
             }
 
             protected override void writeImpl(string s)
@@ -366,19 +377,21 @@ namespace SnippetExecutor
 
             protected override void errImpl(string s)
             {
+                //System.Windows.Forms.MessageBox.Show("ErrorImpl: " + s);
                 console.Invoke(new Action(delegate
                 {
                     var oldcolor = console.ForeColor;
-                    console.ForeColor = System.Drawing.Color.Red;
+                    int selectionStart = console.TextLength;
                     console.AppendText(s);
-                    //move to end
-                    console.SelectionStart = console.Text.Length;
-                    console.ForeColor = oldcolor;
+                    console.Select(selectionStart, s.Length);
+                    console.SelectionColor = System.Drawing.Color.Red;
 
+                    //move to end
+                    console.DeselectAll();
+                    console.SelectionStart = console.TextLength;
+                    
                     console.Refresh();
                 }));
-                
-                write(s);
             }
             
             public override void Dispose()
