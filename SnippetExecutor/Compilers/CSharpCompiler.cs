@@ -26,19 +26,68 @@ namespace SnippetExecutor.Compilers
 		}
 
         private static Regex fieldsRegex =
-            new Regex(@"^ *(?<access>public|private|internal|protected|protected internal) +(?<static>static|const|readonly|static readonly)? *(?<type>\S+) +(?<name>\S+)(?: ?= ?(?<value>.+))?;");
+            new Regex(@"^ *(?<access>public|private|internal|protected|protected internal) +(?<static>static|const|readonly|static readonly)? *(?<type>[a-zA-Z_]\S*) +(?<name>\S+)(?: ?= ?(?<value>.+))?;");
 
         private static Regex methodsRegex =
-            new Regex(@"^ *(?<access>public|private|internal|protected|protected internal)? *(?<override>static|virtual|abstract|override|abstract override|sealed override|new)? *(?<type>\S+) +(?<name>\S+)\((?<params>[^,]+(?:,[^,]+)*)?\)");
+            new Regex(@"^ *(?<access>public|private|internal|protected|protected internal)? *(?<override>static|virtual|abstract|override|abstract override|sealed override|new)? *(?<type>[a-zA-Z_]\S*) +(?<name>\S+)\((?<params>[^,]+(?:,[^,]+)*)?\)");
 
         private static Regex classesRegex =
             new Regex(@"");
+
+        private void stripComments(string line, ref StringBuilder output)
+        {
+            
+            output.Clear();
+            int index = 0;
+            while(index < line.Length)
+            {
+                int lineComment = line.IndexOf("//", index);
+                int blockComment = line.IndexOf("/*", index);
+                if(lineComment > -1)
+                {
+                    //is there a prior block comment?
+                    if(blockComment <= -1 || blockComment > lineComment)
+                    {
+                        //no, escape.
+                        output.Append(line.Substring(index, lineComment - index));
+                        return;
+                    }
+                }
+                if(blockComment > -1)
+                {
+                    //append from the index to the blockcomment
+                    output.Append(line.Substring(index, blockComment - index));
+                    //advance the index to the end of the block comment
+                    int end = line.IndexOf("*/", blockComment);
+                    if (end > -1 && end + 2 < line.Length)
+                    {
+                        index = end + 2;
+                    }
+                    else
+                    {
+                        //block goes to end of line
+                        return;
+                    }
+
+                    continue;
+                }
+
+                //if no block or line comments,
+                output.Append(line.Substring(index));
+                return;
+
+            }
+            
+        }
+
+
 
         public override string PrepareSnippet(string snippetText)
         {
             string toCompile = TemplateLoader.getTemplate(this.lang);
 
             StringBuilder sb = new StringBuilder();
+            StringBuilder temp = new StringBuilder();
             string[] lines = snippetText.Split(new String[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
             int snippetStart = 0;
             int snippetEnd = lines.Length;
@@ -49,6 +98,9 @@ namespace SnippetExecutor.Compilers
             for (int i = snippetStart; i < lines.Length; i++)
             {
                 string l = lines[i].Trim();
+                stripComments(l, ref temp);
+                l = temp.ToString();
+
                 if (!String.IsNullOrEmpty(l))   //ignore whitespace lines
                 {
                     if (l.ToLower().StartsWith(usingCmd))
@@ -95,7 +147,10 @@ namespace SnippetExecutor.Compilers
             int fieldsEnd = snippetStart;
             for (int i = snippetStart; i < lines.Length; i++ )
             {
-                string l = lines[i].Trim().ToLower();
+                string l = lines[i].Trim();
+                stripComments(l, ref temp);
+                l = temp.ToString().ToLower();
+
                 if (!String.IsNullOrEmpty(l))   //ignore whitespace lines
                 {
                     Match m = fieldsRegex.Match(l);
@@ -123,17 +178,13 @@ namespace SnippetExecutor.Compilers
             bool foundFirstMethod = false;
             for (int i = snippetStart; i < lines.Length; i++)
             {
-                string l = lines[i].Trim().ToLower();
+                string l = lines[i].Trim();
+                stripComments(l, ref temp);
+                l = temp.ToString().ToLower();
+
                 if (!String.IsNullOrEmpty(l))   //ignore whitespace lines
                 {
-                    Match m = methodsRegex.Match(l);
-                    if (m.Success)
-                    {
-                        Main.debug.writeLine("method: " + m.Value);
-                        foundFirstMethod = true;
-                        methodsStart = i;
-                    }
-                    else if(foundFirstMethod)
+                    if (foundFirstMethod)
                     {
                         //TODO: find classes
                         //if(classesRegex.IsMatch(l))
@@ -141,6 +192,16 @@ namespace SnippetExecutor.Compilers
                         //    methodsEnd = i;
                         //    break;
                         //}
+                    }
+                    else
+                    {
+                        Match m = methodsRegex.Match(l);
+                        if (m.Success)
+                        {
+                            Main.debug.writeLine("method: " + m.Value);
+                            foundFirstMethod = true;
+                            methodsStart = i;
+                        }
                     }
                 }
             }

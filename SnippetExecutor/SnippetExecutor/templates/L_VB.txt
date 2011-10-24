@@ -7,7 +7,7 @@ public module MyModule
 
 	#Region "fields"
 	${SnippetExecutor.fields}
-	End Region
+	#End Region
 
 	#Region "snippet"
 	Sub SnippetExecutor_doSnippet(args as String())
