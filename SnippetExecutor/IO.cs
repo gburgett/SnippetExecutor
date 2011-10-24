@@ -37,121 +37,180 @@ namespace SnippetExecutor
     /// </summary>
     internal abstract class IOTimedBuffer : IO
     {
+        struct TextElement
+        {
+            public bool isErr;
+            public string line;
+            
+            public TextElement(string line, bool isErr)
+            {   
+                this.line = line;
+                this.isErr = isErr;
+            }
+        }
+
         const int flushIntervalMS = 50;
 
         private Timer tWrite;
-        private Timer tErr;
-        private StringBuilder writeBuffer = new StringBuilder(50);
-        private StringBuilder errBuffer = new StringBuilder(50);
+        private StringBuilder sbWrite = new StringBuilder();
+        private bool lastWriteWasErr = false;
+
+        private Queue<TextElement> elementsToWrite = new Queue<TextElement>();
 
         private void timeoutWrite(object state)
         {
-            string toWrite;
-            lock (writeBuffer)
+            //Logger log = Logger.getLogger();
+            //log.Log("write timeout");
+            lock (sbWrite)
             {
-                if (writeBuffer.Length > 0)
+                bool didWrite = false;
+                while (elementsToWrite.Count > 0)
                 {
-                    toWrite = writeBuffer.ToString();
-                    writeBuffer.Clear();
+                    TextElement el = elementsToWrite.Dequeue();
+                    //log.Log("dequeue " + el.line + " isErr-" + el.isErr.ToString());
+                    if (el.isErr)
+                    {
+                        errImpl(el.line);
+                    }
+                    else
+                    {
+                        writeImpl(el.line);
+                    }
+                    didWrite = true;
                 }
-                else
+
+                if (sbWrite.Length > 0)
+                {
+                    //log.Log("from buffer " + sbWrite.ToString() + " isErr-" + lastWriteWasErr.ToString());
+                    if (lastWriteWasErr)
+                    {
+                        errImpl(sbWrite.ToString());
+                    }
+                    else
+                    {
+                        writeImpl(sbWrite.ToString());
+                    }
+                    sbWrite.Clear();
+                    didWrite = true;
+                }
+
+                //don't dispose the timer immediately after a write, wait to see if more is coming.
+                if (!didWrite && tWrite != null)
                 {
                     tWrite.Dispose();
                     tWrite = null;
-                    return;
                 }
+                
             }
-            writeImpl(toWrite);
-        }
-
-        private void timeoutErr(object state)
-        {
-            string toWrite;
-            lock (errBuffer)
-            {
-                if (errBuffer.Length > 0)
-                {
-                    toWrite = errBuffer.ToString();
-                    errBuffer.Clear();
-                }
-                else
-                {
-                    tErr.Dispose();
-                    tErr = null;
-                    return;
-                }
-            }
-            errImpl(toWrite);
         }
 
         protected abstract void writeImpl(string s);
 
         public void write(char c)
         {
-            lock (writeBuffer)
+            lock (sbWrite)
             {
-                writeBuffer.Append(c);
+                if (sbWrite.Length > 0 && lastWriteWasErr)
+                {
+                    elementsToWrite.Enqueue(new TextElement(sbWrite.ToString(), true));
+                    sbWrite.Clear();
+                }
+
+                sbWrite.Append(c);
+                lastWriteWasErr = false;
+                
                 if (tWrite == null)
                 {
-                    tWrite = new Timer(timeoutWrite, writeBuffer, flushIntervalMS, flushIntervalMS);
+                    tWrite = new Timer(timeoutWrite, sbWrite, flushIntervalMS, flushIntervalMS);
                 }
             }
         }
 
-        public void write(string s)
+        public virtual void write(string s)
         {
-            lock (writeBuffer)
+            Logger log = Logger.getLogger();
+            //log.Log("write " + s);
+            lock (sbWrite)
             {
-                writeBuffer.Append(s);
+                if (sbWrite.Length > 0 && lastWriteWasErr)
+                {
+                    //log.Log("enqueue " + sbWrite.ToString() + " isErr-true");
+                    elementsToWrite.Enqueue(new TextElement(sbWrite.ToString(), true));
+                    sbWrite.Clear();
+                }
+                sbWrite.Append(s);
+                lastWriteWasErr = false;
+
                 if (tWrite == null)
                 {
-                    tWrite = new Timer(timeoutWrite, writeBuffer, flushIntervalMS, flushIntervalMS);
+                    //log.Log("timer start");
+                    tWrite = new Timer(timeoutWrite, sbWrite, flushIntervalMS, flushIntervalMS);
                 }
             }
         }
 
-        public void writeLine()
+        public virtual void writeLine()
         {
             write(Environment.NewLine);
         }
 
-        public void writeLine(string s)
+        public virtual void writeLine(string s)
         {
             write(String.Concat(s, Environment.NewLine));
         }
 
-        public void err(char c)
+        public virtual void err(char c)
         {
-            lock (errBuffer)
+            lock (sbWrite)
             {
-                errBuffer.Append(c);
-                if (tErr == null)
+                if (sbWrite.Length > 0 && !lastWriteWasErr)
                 {
-                    tErr = new Timer(timeoutErr, errBuffer, flushIntervalMS, flushIntervalMS);
+                    elementsToWrite.Enqueue(new TextElement(sbWrite.ToString(), false));
+                    sbWrite.Clear();
+                }
+
+                sbWrite.Append(c);
+                lastWriteWasErr = true;
+
+                if (tWrite == null)
+                {
+                    tWrite = new Timer(timeoutWrite, sbWrite, flushIntervalMS, flushIntervalMS);
                 }
             }
         }
 
         protected abstract void errImpl(String s);
 
-        public void err(string s)
+        public virtual void err(string s)
         {
-            lock (errBuffer)
+            Logger log = Logger.getLogger();
+            //log.Log("err " + s);
+            lock (sbWrite)
             {
-                errBuffer.Append(s);
-                if (tErr == null)
+                if (sbWrite.Length > 0 && !lastWriteWasErr)
                 {
-                    tErr = new Timer(timeoutErr, errBuffer, flushIntervalMS, flushIntervalMS);
+                    //log.Log("enqueue " + sbWrite.ToString() + " isErr-false");
+                    elementsToWrite.Enqueue(new TextElement(sbWrite.ToString(), false));
+                    sbWrite.Clear();
+                }
+                
+                sbWrite.Append(s);
+                lastWriteWasErr = true;
+
+                if (tWrite == null)
+                {
+                    //log.Log("timer start");
+                    tWrite = new Timer(timeoutWrite, sbWrite, flushIntervalMS, flushIntervalMS);
                 }
             }
         }
 
-        public void errLine()
+        public virtual void errLine()
         {
             err(Environment.NewLine);
         }
 
-        public void errLine(string s)
+        public virtual void errLine(string s)
         {
             err(string.Concat(s, Environment.NewLine));
         }
@@ -163,6 +222,12 @@ namespace SnippetExecutor
 
         public virtual void Dispose()
         {
+            
+        }
+
+        ~IOTimedBuffer()
+        {
+            Dispose();
         }
     }
 
@@ -172,7 +237,7 @@ namespace SnippetExecutor
     /// </summary>
     internal class IOAppendCurrentDoc : IOTimedBuffer
     {
-        private IntPtr currScint;
+        protected readonly IntPtr currScint;
 
         public IOAppendCurrentDoc()
         {
@@ -205,6 +270,20 @@ namespace SnippetExecutor
         {
             Dispose();
         }
+    }
+
+    internal class IOInsertAtPosition : IOAppendCurrentDoc
+    {
+        protected override void writeImpl(string s)
+        {
+            Win32.SendMessage(currScint, SciMsg.SCI_REPLACESEL, 0, s);
+        }
+
+        protected override void errImpl(string s)
+        {
+            Win32.SendMessage(currScint, SciMsg.SCI_REPLACESEL, 0, s);
+        }
+
     }
 
     /// <summary>
