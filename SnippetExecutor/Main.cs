@@ -124,18 +124,21 @@ namespace SnippetExecutor
 
         internal static void CompileSnippet()
         {
+            Logger log = null;
             try
             {
-                IntPtr currScint = PluginBase.GetCurrentScintilla();
-
-                myDockableDialog();
-                IO console = frmMyDlg.getIOToConsole();
-                using(Logger log = Logger.CreateLogger())
+                log = Logger.CreateLogger();
+                try
                 {
+                    IntPtr currScint = PluginBase.GetCurrentScintilla();
+
+                    myDockableDialog();
+                    IO console = frmMyDlg.getIOToConsole();
+
 
                     log.Log("compile snippet");
 
-                    int len = (int)Win32.SendMessage(currScint, SciMsg.SCI_GETSELTEXT, 0, 0);
+                    int len = (int) Win32.SendMessage(currScint, SciMsg.SCI_GETSELTEXT, 0, 0);
                     StringBuilder text;
 
                     if (len > 1)
@@ -147,7 +150,7 @@ namespace SnippetExecutor
                     else
                     {
                         //no selection, parse whole file
-                        len = (int)Win32.SendMessage(currScint, SciMsg.SCI_GETTEXT, 0, 0);
+                        len = (int) Win32.SendMessage(currScint, SciMsg.SCI_GETTEXT, 0, 0);
                         text = new StringBuilder(len);
                         Win32.SendMessage(currScint, SciMsg.SCI_GETTEXT, len, text);
                     }
@@ -162,9 +165,9 @@ namespace SnippetExecutor
                     //create defaults
                     SnippetInfo info = new SnippetInfo();
                     info.language = LangType.L_TEXT;
-                    int langtype = (int)LangType.L_TEXT;
+                    int langtype = (int) LangType.L_TEXT;
                     Win32.SendMessage(PluginBase.nppData._nppHandle, NppMsg.NPPM_GETCURRENTLANGTYPE, 0, out langtype);
-                    info.language = (LangType)langtype;
+                    info.language = (LangType) langtype;
                     info.stdIO = console;
                     info.console = console;
                     info.preprocessed = text.ToString();
@@ -184,6 +187,7 @@ namespace SnippetExecutor
                     catch (Exception ex)
                     {
                         console.writeLine("\r\n\r\n--- SnippetExecutor " + DateTime.Now.ToShortTimeString() + " ---");
+                        console.writeLine("Exception processing snippet");
                         Main.HandleException(console, ex);
                         return;
                     }
@@ -209,108 +213,126 @@ namespace SnippetExecutor
 
                     Thread th = new Thread(
                         delegate()
-                        {
-                            Logger logInner = Logger.CreateLogger();
-                            try
                             {
-                                console.writeLine("-- Generating source for snippet...");
-                                info.postprepared = info.compiler.PrepareSnippet(info.postprocessed);
-
-                                if (info.options.ContainsKey("source"))
+                                Logger logInner = Logger.CreateLogger();
+                                try
                                 {
-                                    IO writer = console;
-                                    writer.writeLine();
-                                    if (!String.IsNullOrEmpty((string)info.options["source"]))
+                                    console.writeLine("-- Generating source for snippet...");
+                                    info.postprepared = info.compiler.PrepareSnippet(info.postprocessed);
+
+                                    if (info.options.ContainsKey("source"))
                                     {
-                                        string opt = (info.options["source"] as string);
-                                        if (!String.IsNullOrEmpty(opt))
+                                        IO writer = console;
+                                        writer.writeLine();
+                                        if (!String.IsNullOrEmpty((string) info.options["source"]))
                                         {
-                                            try
+                                            string opt = (info.options["source"] as string);
+                                            if (!String.IsNullOrEmpty(opt))
                                             {
-                                                writer = ioForOption(opt, info);
-                                            }
-                                            catch (Exception ex)
-                                            {
-                                                console.writeLine("Cannot write to " + opt);
-                                                console.writeLine(ex.Message);
-                                                return;
+                                                try
+                                                {
+                                                    writer = ioForOption(opt, info);
+                                                }
+                                                catch (Exception ex)
+                                                {
+                                                    console.writeLine("Cannot write to " + opt);
+                                                    console.writeLine(ex.Message);
+                                                    return;
+                                                }
                                             }
                                         }
+                                        writer.write(info.postprepared);
                                     }
-                                    writer.write(info.postprepared);
+
+                                    if (String.IsNullOrEmpty(info.postprepared)) return;
+
+                                    info.compilerCmdLine = (string) info.options["compile"];
+                                    console.writeLine("\r\n-- compiling source with options " + info.compilerCmdLine);
+                                    info.executable = info.compiler.Compile(info.postprepared, info.compilerCmdLine);
+
+                                    if (info.executable == null) return;
+
+                                    EventHandler cancelDelegate = delegate(object sender, EventArgs e)
+                                                                      {
+                                                                          info.compiler.Cancel();
+                                                                          console.write("-- Cancelling --");
+                                                                      };
+                                    frmMyDlg.CancelRunButtonClicked += cancelDelegate;
+
+                                    info.compiler.workingDirectory = info.workingDirectory;
+
+                                    info.runCmdLine = (string) info.options["run"];
+                                    console.writeLine("-- running with options " + info.runCmdLine + " --");
+                                    info.compiler.execute(info.executable, info.runCmdLine);
+                                    console.writeLine("\r\n-- finished run --");
+
+                                    frmMyDlg.CancelRunButtonClicked -= cancelDelegate;
+
+
                                 }
-
-                                if (String.IsNullOrEmpty(info.postprepared)) return;
-
-                                info.compilerCmdLine = (string)info.options["compile"];
-                                console.writeLine("\r\n-- compiling source with options " + info.compilerCmdLine);
-                                info.executable = info.compiler.Compile(info.postprepared, info.compilerCmdLine);
-
-                                if (info.executable == null) return;
-
-                                EventHandler cancelDelegate = delegate(object sender, EventArgs e)
-                                    {
-                                        info.compiler.Cancel();
-                                        console.write("-- Cancelling --");
-                                    };
-                                frmMyDlg.CancelRunButtonClicked += cancelDelegate;
-
-                                info.compiler.workingDirectory = info.workingDirectory;
-
-                                info.runCmdLine = (string)info.options["run"];
-                                console.writeLine("-- running with options " + info.runCmdLine + " --");
-                                info.compiler.execute(info.executable, info.runCmdLine);
-                                console.writeLine("\r\n-- finished run --");
-
-                                frmMyDlg.CancelRunButtonClicked -= cancelDelegate;
-
-
-                            }
-                            catch (Exception ex)
-                            {
-                                Main.HandleException(console, ex);
-                                return;
-                            }
-                            finally
-                            {
-                                if (info.executable != null)
+                                catch (Exception ex)
                                 {
-                                    info.compiler.cleanup(info);
+                                    Main.HandleException(console, ex);
+                                    return;
                                 }
+                                finally
+                                {
+                                    if (info.executable != null)
+                                    {
+                                        info.compiler.cleanup(info);
+                                    }
 
-                                console.Dispose();
-                                info.stdIO.Dispose();
-                                logInner.Dispose();
+                                    console.Dispose();
+                                    info.stdIO.Dispose();
+                                    logInner.Dispose();
+                                }
                             }
-                        }
-                    );
+                        );
 
 
 
                     th.Start();
-                }
 
+
+                }
+                catch (Exception ex)
+                {
+
+                    if (Main.debug != null)
+                    {
+                        Main.HandleException(Main.debug, ex);
+                    }
+                    else
+                    {
+                        MessageBox.Show(ex.ToString());
+                    }
+                    return;
+                }
             }
-            catch (Exception ex)
+            catch(Exception ex)
             {
-                if (Main.debug != null)
-                {
-                    Main.HandleException(Main.debug, ex);
-                }
-                else
-                {
-                    MessageBox.Show(ex.ToString());
-                }
-                return;
+                MessageBox.Show("Error creating logger: " + ex.ToString());
+            }
+            finally
+            {
+                if (log != null)
+                    log.Dispose();
             }
             
+
         }
 
         private const int maxInnerExceptions = 4;
         private static void HandleException(IO console, Exception ex)
         {
-            console.errLine("Exception! " + ex.ToString());
-            Exception inner = ex.InnerException;
+            try{
+                console.errLine("Exception! " + ex.ToString());
+                Exception inner = ex.InnerException;
+            }
+            catch(Exception ex2)
+            {
+                MessageBox.Show(ex2.ToString() + "\r\nhappened when processing " + ex.Message);
+            }
             //for (int i = 0; i < maxInnerExceptions; i++)
             //{
             //    if (inner == null)
@@ -326,6 +348,7 @@ namespace SnippetExecutor
         {
             switch (langType)
             {
+                case LangType.L_TEXT:
                 case LangType.L_CS:
                     return new CSharpCompiler();
 
@@ -555,7 +578,7 @@ namespace SnippetExecutor
                     string ret = loadTemplate(path);
                     if (ret == null)
                     {
-                        throw new Exception("No template for " + System.IO.Path.GetFullPath(path));
+                        throw new Exception("No template for " + System.IO.Path.GetFullPath(path));    
                     }
                     templates[language] = ret;
                     return ret;
